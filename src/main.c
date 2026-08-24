@@ -1,0 +1,640 @@
+/* TX Lite - single-page Win32 UI over connection.h/device.h.
+ * Consolidates sdr_controller's Dashboard + Device Control pages (minus the
+ * Communication page's terminal log / activity chart) into one window.
+ * No Qt, no pywebview, no vendor DLL - just user32/gdi32/kernel32/advapi32.
+ */
+#include <windows.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+#include "resource.h"
+#include "connection.h"
+#include "device.h"
+
+#define CLIENT_WIDTH  460
+#define CLIENT_HEIGHT 770
+
+static const int BAUD_OPTIONS[] = { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 2000000 };
+#define BAUD_OPTIONS_COUNT 9
+#define BAUD_DEFAULT_INDEX 4 /* 115200 */
+
+static const int DATABITS_OPTIONS[] = { 5, 6, 7, 8 };
+#define DATABITS_OPTIONS_COUNT 4
+#define DATABITS_DEFAULT_INDEX 3 /* 8 */
+
+static const char *const PARITY_LABELS[] = { "None", "Odd", "Even", "Mark", "Space" };
+static const char PARITY_CODES[] = { 'N', 'O', 'E', 'M', 'S' };
+#define PARITY_OPTIONS_COUNT 5
+
+static const int BANDWIDTH_OPTIONS[] = { 10, 20, 50, 100, 150, 200, 250, 300 };
+#define BANDWIDTH_OPTIONS_COUNT 8
+#define BANDWIDTH_DEFAULT_INDEX 3 /* 100 MHz */
+#define BANDWIDTH_UNCONFIRMED_MHZ 300
+
+static const int POWER_OPTIONS[] = { 0, -6, -12 };
+#define POWER_OPTIONS_COUNT 3
+
+static const int STEP_OPTIONS[] = { 1, 10, 50, 100 };
+#define STEP_OPTIONS_COUNT 4
+#define STEP_DEFAULT_INDEX 1 /* 10 MHz */
+
+#define DEFAULT_FREQUENCY_MHZ 2450
+
+static HINSTANCE g_hinst;
+static HWND g_hwnd;
+static HFONT g_font;
+static HFONT g_mono_font;
+static HBRUSH g_brush_warn;
+
+static Connection g_conn;
+static Device g_device;
+
+static void ui_refresh_status(void);
+static void ui_show_warning(const char *message);
+static void ui_clear_warning(void);
+static void ui_update_connect_button(bool connected);
+static void refresh_port_list(void);
+
+/* ---- small control-creation helper ---- */
+
+static HWND add_ctrl(HWND parent, LPCSTR cls, LPCSTR text, DWORD style, int x, int y, int w, int h, int id) {
+    HWND ctrl = CreateWindowExA(0, cls, text, style | WS_CHILD | WS_VISIBLE,
+                                 x, y, w, h, parent, (HMENU)(INT_PTR)id, g_hinst, NULL);
+    if (ctrl) {
+        SendMessageA(ctrl, WM_SETFONT, (WPARAM)g_font, (LPARAM)TRUE);
+    }
+    return ctrl;
+}
+
+/* ---- device/connection -> UI callbacks (single global window, so these
+ * just reach into the globals above rather than threading ctx through) ---- */
+
+static void conn_on_connected_changed(bool connected, void *ctx) {
+    (void)ctx;
+    device_on_connected_changed(connected, &g_device);
+    ui_update_connect_button(connected);
+}
+
+static void conn_on_frame(const ProtoParsedFrame *frame, void *ctx) {
+    (void)ctx;
+    ui_clear_warning();
+    device_on_frame(frame, &g_device);
+}
+
+static void conn_on_raw_tx(const uint8_t *data, uint8_t len, void *ctx) {
+    char buf[64];
+    int pos = 0, i;
+    (void)ctx;
+    for (i = 0; i < len && pos < (int)sizeof(buf) - 4; i++) {
+        pos += wsprintfA(buf + pos, i ? " %02X" : "%02X", data[i]);
+    }
+    buf[pos] = '\0';
+    SetDlgItemTextA(g_hwnd, IDC_TX_EDIT, buf);
+}
+
+static void conn_on_raw_rx(const uint8_t *data, uint16_t len, void *ctx) {
+    char buf[196];
+    int pos = 0, i;
+    int n = (len > 64) ? 64 : (int)len; /* real frames are tiny; this just bounds a garbage burst */
+    (void)ctx;
+    for (i = 0; i < n && pos < (int)sizeof(buf) - 4; i++) {
+        pos += wsprintfA(buf + pos, i ? " %02X" : "%02X", data[i]);
+    }
+    buf[pos] = '\0';
+    SetDlgItemTextA(g_hwnd, IDC_RX_EDIT, buf);
+}
+
+static void conn_on_error(const char *message, void *ctx) {
+    (void)ctx;
+    ui_show_warning(message);
+}
+
+static void dev_on_state_changed(void *ctx) {
+    (void)ctx;
+    ui_refresh_status();
+}
+
+static void dev_on_command_timeout(const char *message, void *ctx) {
+    (void)ctx;
+    ui_show_warning(message);
+}
+
+static void dev_on_command_failed(const char *message, void *ctx) {
+    (void)ctx;
+    ui_show_warning(message);
+}
+
+/* ---- UI update helpers ---- */
+
+static const char *mode_display_name(int mode) {
+    const char *name;
+    if (mode == DEVICE_UNKNOWN) {
+        return "-";
+    }
+    name = proto_mode_name((uint8_t)mode);
+    return name ? name : "-";
+}
+
+static void ui_refresh_status(void) {
+    DeviceState *s = &g_device.state;
+    char buf[64];
+
+    SetDlgItemTextA(g_hwnd, IDC_STAT_CONN, s->connected ? "Connected" : "Disconnected");
+    SetDlgItemTextA(g_hwnd, IDC_STAT_OUTPUT, s->output_on ? "ON" : "OFF");
+
+    if (s->frequency_mhz != DEVICE_UNKNOWN) {
+        wsprintfA(buf, "%d MHz", s->frequency_mhz);
+        SetDlgItemTextA(g_hwnd, IDC_STAT_FREQ, buf);
+    } else {
+        SetDlgItemTextA(g_hwnd, IDC_STAT_FREQ, "-");
+    }
+    if (s->bandwidth_mhz != DEVICE_UNKNOWN) {
+        wsprintfA(buf, "%d MHz", s->bandwidth_mhz);
+        SetDlgItemTextA(g_hwnd, IDC_STAT_BW, buf);
+    } else {
+        SetDlgItemTextA(g_hwnd, IDC_STAT_BW, "-");
+    }
+    if (s->power_db != DEVICE_UNKNOWN) {
+        wsprintfA(buf, "%d dB", s->power_db);
+        SetDlgItemTextA(g_hwnd, IDC_STAT_POWER, buf);
+    } else {
+        SetDlgItemTextA(g_hwnd, IDC_STAT_POWER, "-");
+    }
+    SetDlgItemTextA(g_hwnd, IDC_STAT_MODE, mode_display_name(s->mode));
+    SetDlgItemTextA(g_hwnd, IDC_STAT_LASTCMD, s->last_command);
+
+    SetDlgItemTextA(g_hwnd, IDC_OUTPUT_PILL, s->output_on ? "ON" : "OFF");
+    CheckDlgButton(g_hwnd, IDC_OUTPUT_CHECK, s->output_on ? BST_CHECKED : BST_UNCHECKED);
+
+    /* Don't clobber the address box while the user is mid-edit, matching
+     * the reference's hasFocus() guard. */
+    if (GetFocus() != GetDlgItem(g_hwnd, IDC_ADDR_EDIT)) {
+        SetDlgItemInt(g_hwnd, IDC_ADDR_EDIT, s->address, FALSE);
+    }
+
+    InvalidateRect(GetDlgItem(g_hwnd, IDC_STAT_CONN), NULL, TRUE);
+    InvalidateRect(GetDlgItem(g_hwnd, IDC_OUTPUT_PILL), NULL, TRUE);
+}
+
+static void ui_show_warning(const char *message) {
+    char buf[300];
+    wsprintfA(buf, "! %s", message);
+    SetDlgItemTextA(g_hwnd, IDC_WARNING_LBL, buf);
+    ShowWindow(GetDlgItem(g_hwnd, IDC_WARNING_LBL), SW_SHOW);
+}
+
+static void ui_clear_warning(void) {
+    ShowWindow(GetDlgItem(g_hwnd, IDC_WARNING_LBL), SW_HIDE);
+}
+
+static void ui_update_connect_button(bool connected) {
+    SetDlgItemTextA(g_hwnd, IDC_CONNECT_BTN, connected ? "Disconnect" : "Connect");
+}
+
+static void refresh_port_list(void) {
+    char names[16][16];
+    int count, i;
+    char current[16];
+    HWND combo = GetDlgItem(g_hwnd, IDC_PORT_COMBO);
+
+    GetDlgItemTextA(g_hwnd, IDC_PORT_COMBO, current, sizeof(current));
+
+    SendMessageA(combo, CB_RESETCONTENT, 0, 0);
+    count = conn_list_ports(names, 16);
+    if (count > 16) {
+        count = 16;
+    }
+    for (i = 0; i < count; i++) {
+        SendMessageA(combo, CB_ADDSTRING, 0, (LPARAM)names[i]);
+    }
+    if (current[0] != '\0') {
+        SendMessageA(combo, CB_SELECTSTRING, (WPARAM)-1, (LPARAM)current);
+    }
+}
+
+/* ---- command handlers ---- */
+
+static void on_connect_clicked(void) {
+    char port[16];
+    int baud_idx, baud, databits_idx, databits, parity_idx;
+    char parity;
+
+    if (conn_is_connected(&g_conn)) {
+        conn_disconnect(&g_conn);
+        return;
+    }
+
+    GetDlgItemTextA(g_hwnd, IDC_PORT_COMBO, port, sizeof(port));
+    if (port[0] == '\0') {
+        return;
+    }
+
+    baud_idx = (int)SendDlgItemMessageA(g_hwnd, IDC_BAUD_COMBO, CB_GETCURSEL, 0, 0);
+    baud = (int)SendDlgItemMessageA(g_hwnd, IDC_BAUD_COMBO, CB_GETITEMDATA, (WPARAM)baud_idx, 0);
+
+    databits_idx = (int)SendDlgItemMessageA(g_hwnd, IDC_DATABITS_COMBO, CB_GETCURSEL, 0, 0);
+    databits = (int)SendDlgItemMessageA(g_hwnd, IDC_DATABITS_COMBO, CB_GETITEMDATA, (WPARAM)databits_idx, 0);
+
+    parity_idx = (int)SendDlgItemMessageA(g_hwnd, IDC_PARITY_COMBO, CB_GETCURSEL, 0, 0);
+    if (parity_idx < 0 || parity_idx >= PARITY_OPTIONS_COUNT) {
+        parity_idx = 0;
+    }
+    parity = PARITY_CODES[parity_idx];
+
+    conn_connect(&g_conn, port, (DWORD)baud, parity, (uint8_t)databits);
+}
+
+static void step_frequency(int direction) {
+    int step_idx, step_mhz, value;
+
+    step_idx = (int)SendDlgItemMessageA(g_hwnd, IDC_STEP_COMBO, CB_GETCURSEL, 0, 0);
+    step_mhz = (int)SendDlgItemMessageA(g_hwnd, IDC_STEP_COMBO, CB_GETITEMDATA, (WPARAM)step_idx, 0);
+
+    value = (int)GetDlgItemInt(g_hwnd, IDC_FREQ_EDIT, NULL, FALSE);
+    value += direction * step_mhz;
+    if (value < PROTO_FREQ_MIN_MHZ) {
+        value = PROTO_FREQ_MIN_MHZ;
+    }
+    if (value > PROTO_FREQ_MAX_MHZ) {
+        value = PROTO_FREQ_MAX_MHZ;
+    }
+    SetDlgItemInt(g_hwnd, IDC_FREQ_EDIT, (UINT)value, FALSE);
+}
+
+static void on_apply_clicked(void) {
+    uint8_t mode;
+    int freq, bw_idx, bw_mhz, power_idx, power_db;
+    ProtoStatus status;
+    bool mode_unconfirmed, bw_unconfirmed;
+
+    if (IsDlgButtonChecked(g_hwnd, IDC_RB_WHITE) == BST_CHECKED) {
+        mode = PROTO_MODE_WHITE_NOISE;
+    } else if (IsDlgButtonChecked(g_hwnd, IDC_RB_SWEEP) == BST_CHECKED) {
+        mode = PROTO_MODE_LINEAR_SWEEP;
+    } else if (IsDlgButtonChecked(g_hwnd, IDC_RB_COMB) == BST_CHECKED) {
+        mode = PROTO_MODE_COMB_SPECTRUM;
+    } else {
+        mode = PROTO_MODE_SINGLE;
+    }
+
+    freq = (int)GetDlgItemInt(g_hwnd, IDC_FREQ_EDIT, NULL, FALSE);
+
+    bw_idx = (int)SendDlgItemMessageA(g_hwnd, IDC_BW_COMBO, CB_GETCURSEL, 0, 0);
+    bw_mhz = (int)SendDlgItemMessageA(g_hwnd, IDC_BW_COMBO, CB_GETITEMDATA, (WPARAM)bw_idx, 0);
+
+    power_idx = (int)SendDlgItemMessageA(g_hwnd, IDC_POWER_COMBO, CB_GETCURSEL, 0, 0);
+    power_db = (int)SendDlgItemMessageA(g_hwnd, IDC_POWER_COMBO, CB_GETITEMDATA, (WPARAM)power_idx, 0);
+
+    mode_unconfirmed = (mode == PROTO_MODE_SINGLE);
+    bw_unconfirmed = (bw_mhz == BANDWIDTH_UNCONFIRMED_MHZ);
+
+    if (mode_unconfirmed || bw_unconfirmed) {
+        char msg[256];
+        const char *what = (mode_unconfirmed && bw_unconfirmed) ? "modulation mode and bandwidth"
+                            : mode_unconfirmed ? "modulation mode" : "bandwidth";
+        wsprintfA(msg,
+                  "The selected %s uses a guessed protocol byte value that hasn't been "
+                  "verified against real hardware. Send anyway?", what);
+        if (MessageBoxA(g_hwnd, msg, "Unconfirmed value", MB_YESNO | MB_ICONWARNING) != IDYES) {
+            return;
+        }
+    }
+
+    status = device_apply_signal_settings(&g_device, mode, (uint16_t)freq, (uint16_t)bw_mhz, power_db);
+    if (status != PROTO_OK) {
+        MessageBoxA(g_hwnd, "Invalid settings", "Invalid settings", MB_OK | MB_ICONWARNING);
+    }
+}
+
+static void on_emergency_stop(void) {
+    if (MessageBoxA(g_hwnd, "Immediately turn off the device output?", "Emergency Stop",
+                     MB_YESNO | MB_ICONWARNING) == IDYES) {
+        device_turn_output_off(&g_device);
+    }
+}
+
+/* ---- layout ---- */
+
+static void build_controls(HWND hwnd) {
+    unsigned i;
+
+    /* Connection & Settings */
+    add_ctrl(hwnd, "BUTTON", "Connection && Settings", BS_GROUPBOX, 10, 6, 440, 130, 0);
+    add_ctrl(hwnd, "STATIC", "Port:", SS_LEFT, 22, 26, 36, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 60, 24, 140, 200, IDC_PORT_COMBO);
+    add_ctrl(hwnd, "BUTTON", "Refresh", BS_PUSHBUTTON | WS_TABSTOP, 206, 24, 60, 22, IDC_REFRESH_BTN);
+    add_ctrl(hwnd, "BUTTON", "Connect", BS_PUSHBUTTON | WS_TABSTOP, 272, 24, 80, 22, IDC_CONNECT_BTN);
+    add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 358, 27, 84, 16, IDC_CONN_STATUS_LBL);
+
+    add_ctrl(hwnd, "STATIC", "Baud:", SS_LEFT, 22, 58, 36, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 60, 56, 90, 160, IDC_BAUD_COMBO);
+    add_ctrl(hwnd, "STATIC", "Data Bits:", SS_LEFT, 158, 58, 58, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 220, 56, 45, 100, IDC_DATABITS_COMBO);
+    add_ctrl(hwnd, "STATIC", "Parity:", SS_LEFT, 273, 58, 40, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 316, 56, 80, 120, IDC_PARITY_COMBO);
+
+    add_ctrl(hwnd, "STATIC", "Address:", SS_LEFT, 22, 90, 52, 16, 0);
+    add_ctrl(hwnd, "EDIT", "0", WS_BORDER | ES_NUMBER, 76, 88, 50, 20, IDC_ADDR_EDIT);
+    add_ctrl(hwnd, "BUTTON", "Query", BS_PUSHBUTTON | WS_TABSTOP, 132, 88, 60, 22, IDC_QUERY_ADDR_BTN);
+    add_ctrl(hwnd, "BUTTON", "Set", BS_PUSHBUTTON | WS_TABSTOP, 198, 88, 50, 22, IDC_SET_ADDR_BTN);
+
+    /* Output */
+    add_ctrl(hwnd, "BUTTON", "Output", BS_GROUPBOX, 10, 144, 440, 54, 0);
+    add_ctrl(hwnd, "BUTTON", "Output ON", BS_AUTOCHECKBOX | WS_TABSTOP, 22, 166, 110, 20, IDC_OUTPUT_CHECK);
+    add_ctrl(hwnd, "STATIC", "OFF", SS_CENTER, 150, 166, 60, 20, IDC_OUTPUT_PILL);
+
+    /* Status */
+    add_ctrl(hwnd, "BUTTON", "Status", BS_GROUPBOX, 10, 206, 440, 190, 0);
+    add_ctrl(hwnd, "STATIC", "Connection:", SS_LEFT, 22, 228, 74, 16, 0);
+    add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 100, 228, 120, 16, IDC_STAT_CONN);
+    add_ctrl(hwnd, "STATIC", "Output:", SS_LEFT, 230, 228, 50, 16, 0);
+    add_ctrl(hwnd, "STATIC", "OFF", SS_LEFT, 284, 228, 80, 16, IDC_STAT_OUTPUT);
+
+    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 252, 74, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 100, 252, 120, 16, IDC_STAT_FREQ);
+    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 230, 252, 64, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 298, 252, 80, 16, IDC_STAT_BW);
+
+    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 22, 276, 74, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 100, 276, 120, 16, IDC_STAT_POWER);
+    add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 230, 276, 50, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 284, 276, 140, 16, IDC_STAT_MODE);
+
+    add_ctrl(hwnd, "STATIC", "Last Command:", SS_LEFT, 22, 300, 90, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 114, 300, 320, 16, IDC_STAT_LASTCMD);
+
+    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 22, 322, 410, 60, IDC_WARNING_LBL);
+    ShowWindow(GetDlgItem(hwnd, IDC_WARNING_LBL), SW_HIDE);
+
+    /* Signal Settings */
+    add_ctrl(hwnd, "BUTTON", "Signal Settings", BS_GROUPBOX, 10, 400, 440, 220, 0);
+    add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 22, 420, 40, 16, 0);
+    add_ctrl(hwnd, "BUTTON", "White Noise", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 62, 420, 95, 18, IDC_RB_WHITE);
+    add_ctrl(hwnd, "BUTTON", "Linear Sweep", BS_AUTORADIOBUTTON | WS_TABSTOP, 160, 420, 100, 18, IDC_RB_SWEEP);
+    add_ctrl(hwnd, "BUTTON", "Comb Spectrum", BS_AUTORADIOBUTTON | WS_TABSTOP, 62, 440, 100, 18, IDC_RB_COMB);
+    add_ctrl(hwnd, "BUTTON", "Single (unconfirmed)", BS_AUTORADIOBUTTON | WS_TABSTOP, 160, 440, 160, 18, IDC_RB_SINGLE);
+    CheckDlgButton(hwnd, IDC_RB_WHITE, BST_CHECKED);
+
+    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 468, 64, 16, 0);
+    {
+        char freq_label[8];
+        wsprintfA(freq_label, "%d", DEFAULT_FREQUENCY_MHZ);
+        add_ctrl(hwnd, "EDIT", freq_label, WS_BORDER | ES_NUMBER, 88, 466, 60, 20, IDC_FREQ_EDIT);
+    }
+    add_ctrl(hwnd, "STATIC", "MHz", SS_LEFT, 150, 468, 26, 16, 0);
+    add_ctrl(hwnd, "BUTTON", "-", BS_PUSHBUTTON | WS_TABSTOP, 180, 466, 24, 20, IDC_FREQ_MINUS_BTN);
+    add_ctrl(hwnd, "BUTTON", "+", BS_PUSHBUTTON | WS_TABSTOP, 206, 466, 24, 20, IDC_FREQ_PLUS_BTN);
+    add_ctrl(hwnd, "STATIC", "Step:", SS_LEFT, 236, 468, 30, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 268, 466, 80, 100, IDC_STEP_COMBO);
+
+    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 22, 496, 64, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 88, 494, 160, 160, IDC_BW_COMBO);
+
+    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 22, 524, 64, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 88, 522, 110, 100, IDC_POWER_COMBO);
+
+    add_ctrl(hwnd, "BUTTON", "Apply", BS_PUSHBUTTON | WS_TABSTOP, 22, 552, 80, 26, IDC_APPLY_BTN);
+    add_ctrl(hwnd, "BUTTON", "Read Device", BS_PUSHBUTTON | WS_TABSTOP, 108, 552, 100, 26, IDC_READ_BTN);
+
+    /* TX / RX */
+    add_ctrl(hwnd, "BUTTON", "TX / RX", BS_GROUPBOX, 10, 626, 440, 86, 0);
+    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 22, 650, 26, 16, 0);
+    {
+        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 52, 648, 384, 20, IDC_TX_EDIT);
+        if (tx) SendMessageA(tx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
+    }
+    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 22, 674, 26, 16, 0);
+    {
+        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 52, 672, 384, 20, IDC_RX_EDIT);
+        if (rx) SendMessageA(rx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
+    }
+
+    /* Emergency stop */
+    add_ctrl(hwnd, "BUTTON", "EMERGENCY STOP - OUTPUT OFF", BS_PUSHBUTTON | WS_TABSTOP, 10, 720, 440, 34, IDC_ESTOP_BTN);
+
+    /* ---- populate lists ---- */
+
+    for (i = 0; i < BAUD_OPTIONS_COUNT; i++) {
+        char label[16];
+        wsprintfA(label, "%d", BAUD_OPTIONS[i]);
+        SendDlgItemMessageA(hwnd, IDC_BAUD_COMBO, CB_ADDSTRING, 0, (LPARAM)label);
+        SendDlgItemMessageA(hwnd, IDC_BAUD_COMBO, CB_SETITEMDATA, i, (LPARAM)BAUD_OPTIONS[i]);
+    }
+    SendDlgItemMessageA(hwnd, IDC_BAUD_COMBO, CB_SETCURSEL, BAUD_DEFAULT_INDEX, 0);
+
+    for (i = 0; i < DATABITS_OPTIONS_COUNT; i++) {
+        char label[4];
+        wsprintfA(label, "%d", DATABITS_OPTIONS[i]);
+        SendDlgItemMessageA(hwnd, IDC_DATABITS_COMBO, CB_ADDSTRING, 0, (LPARAM)label);
+        SendDlgItemMessageA(hwnd, IDC_DATABITS_COMBO, CB_SETITEMDATA, i, (LPARAM)DATABITS_OPTIONS[i]);
+    }
+    SendDlgItemMessageA(hwnd, IDC_DATABITS_COMBO, CB_SETCURSEL, DATABITS_DEFAULT_INDEX, 0);
+
+    for (i = 0; i < PARITY_OPTIONS_COUNT; i++) {
+        SendDlgItemMessageA(hwnd, IDC_PARITY_COMBO, CB_ADDSTRING, 0, (LPARAM)PARITY_LABELS[i]);
+        SendDlgItemMessageA(hwnd, IDC_PARITY_COMBO, CB_SETITEMDATA, i, (LPARAM)(int)PARITY_CODES[i]);
+    }
+    SendDlgItemMessageA(hwnd, IDC_PARITY_COMBO, CB_SETCURSEL, 0, 0);
+
+    for (i = 0; i < BANDWIDTH_OPTIONS_COUNT; i++) {
+        char label[24];
+        if (BANDWIDTH_OPTIONS[i] == BANDWIDTH_UNCONFIRMED_MHZ) {
+            wsprintfA(label, "%d MHz (unconfirmed)", BANDWIDTH_OPTIONS[i]);
+        } else {
+            wsprintfA(label, "%d MHz", BANDWIDTH_OPTIONS[i]);
+        }
+        SendDlgItemMessageA(hwnd, IDC_BW_COMBO, CB_ADDSTRING, 0, (LPARAM)label);
+        SendDlgItemMessageA(hwnd, IDC_BW_COMBO, CB_SETITEMDATA, i, (LPARAM)BANDWIDTH_OPTIONS[i]);
+    }
+    SendDlgItemMessageA(hwnd, IDC_BW_COMBO, CB_SETCURSEL, BANDWIDTH_DEFAULT_INDEX, 0);
+
+    for (i = 0; i < POWER_OPTIONS_COUNT; i++) {
+        char label[16];
+        if (POWER_OPTIONS[i] == 0) {
+            wsprintfA(label, "0 dB (max)");
+        } else {
+            wsprintfA(label, "%d dB", POWER_OPTIONS[i]);
+        }
+        SendDlgItemMessageA(hwnd, IDC_POWER_COMBO, CB_ADDSTRING, 0, (LPARAM)label);
+        SendDlgItemMessageA(hwnd, IDC_POWER_COMBO, CB_SETITEMDATA, i, (LPARAM)POWER_OPTIONS[i]);
+    }
+    SendDlgItemMessageA(hwnd, IDC_POWER_COMBO, CB_SETCURSEL, 0, 0);
+
+    for (i = 0; i < STEP_OPTIONS_COUNT; i++) {
+        char label[16];
+        wsprintfA(label, "%d MHz", STEP_OPTIONS[i]);
+        SendDlgItemMessageA(hwnd, IDC_STEP_COMBO, CB_ADDSTRING, 0, (LPARAM)label);
+        SendDlgItemMessageA(hwnd, IDC_STEP_COMBO, CB_SETITEMDATA, i, (LPARAM)STEP_OPTIONS[i]);
+    }
+    SendDlgItemMessageA(hwnd, IDC_STEP_COMBO, CB_SETCURSEL, STEP_DEFAULT_INDEX, 0);
+}
+
+/* ---- window procedure ---- */
+
+static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_CREATE: {
+            ConnectionCallbacks ccb;
+            DeviceCallbacks dcb;
+
+            g_hwnd = hwnd;
+            g_font = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+            g_mono_font = CreateFontA(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                       ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                       DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, "Courier New");
+            if (!g_mono_font) {
+                g_mono_font = g_font;
+            }
+
+            build_controls(hwnd);
+            refresh_port_list();
+
+            memset(&ccb, 0, sizeof(ccb));
+            ccb.on_connected_changed = conn_on_connected_changed;
+            ccb.on_frame = conn_on_frame;
+            ccb.on_raw_tx = conn_on_raw_tx;
+            ccb.on_raw_rx = conn_on_raw_rx;
+            ccb.on_error = conn_on_error;
+            conn_init(&g_conn, ccb);
+
+            memset(&dcb, 0, sizeof(dcb));
+            dcb.on_state_changed = dev_on_state_changed;
+            dcb.on_command_timeout = dev_on_command_timeout;
+            dcb.on_command_failed = dev_on_command_failed;
+            device_init(&g_device, &g_conn, dcb);
+
+            ui_refresh_status();
+            SetTimer(hwnd, ID_POLL_TIMER, 50, NULL);
+            return 0;
+        }
+
+        case WM_TIMER:
+            if (wParam == ID_POLL_TIMER) {
+                conn_poll(&g_conn);
+                device_poll_timeout(&g_device);
+            }
+            return 0;
+
+        case WM_COMMAND: {
+            WORD id = LOWORD(wParam);
+            WORD code = HIWORD(wParam);
+            if (code != BN_CLICKED) {
+                break;
+            }
+            switch (id) {
+                case IDC_REFRESH_BTN: refresh_port_list(); break;
+                case IDC_CONNECT_BTN: on_connect_clicked(); break;
+                case IDC_QUERY_ADDR_BTN: device_query_address(&g_device); break;
+                case IDC_SET_ADDR_BTN: {
+                    int addr = (int)GetDlgItemInt(hwnd, IDC_ADDR_EDIT, NULL, FALSE);
+                    if (addr < PROTO_ADDR_MIN) addr = PROTO_ADDR_MIN;
+                    if (addr > PROTO_ADDR_MAX) addr = PROTO_ADDR_MAX;
+                    device_set_address(&g_device, (uint8_t)addr);
+                    break;
+                }
+                case IDC_OUTPUT_CHECK: {
+                    bool checked = (IsDlgButtonChecked(hwnd, IDC_OUTPUT_CHECK) == BST_CHECKED);
+                    if (checked) device_turn_output_on(&g_device);
+                    else device_turn_output_off(&g_device);
+                    break;
+                }
+                case IDC_FREQ_MINUS_BTN: step_frequency(-1); break;
+                case IDC_FREQ_PLUS_BTN: step_frequency(1); break;
+                case IDC_APPLY_BTN: on_apply_clicked(); break;
+                case IDC_READ_BTN: device_read_status(&g_device); break;
+                case IDC_ESTOP_BTN: on_emergency_stop(); break;
+                default: break;
+            }
+            return 0;
+        }
+
+        case WM_CTLCOLORSTATIC: {
+            HWND ctl = (HWND)lParam;
+            HDC hdc = (HDC)wParam;
+            if (ctl == GetDlgItem(hwnd, IDC_STAT_CONN) || ctl == GetDlgItem(hwnd, IDC_CONN_STATUS_LBL)) {
+                SetTextColor(hdc, g_device.state.connected ? RGB(8, 127, 35) : RGB(176, 0, 32));
+                SetBkMode(hdc, TRANSPARENT);
+                return (LRESULT)GetSysColorBrush(COLOR_BTNFACE);
+            }
+            if (ctl == GetDlgItem(hwnd, IDC_OUTPUT_PILL)) {
+                SetTextColor(hdc, g_device.state.output_on ? RGB(0, 90, 200) : RGB(100, 100, 100));
+                SetBkMode(hdc, TRANSPARENT);
+                return (LRESULT)GetSysColorBrush(COLOR_BTNFACE);
+            }
+            if (ctl == GetDlgItem(hwnd, IDC_WARNING_LBL)) {
+                if (!g_brush_warn) {
+                    g_brush_warn = CreateSolidBrush(RGB(254, 243, 199));
+                }
+                SetTextColor(hdc, RGB(146, 64, 14));
+                SetBkColor(hdc, RGB(254, 243, 199));
+                return (LRESULT)g_brush_warn;
+            }
+            break;
+        }
+
+        case WM_DESTROY:
+            KillTimer(hwnd, ID_POLL_TIMER);
+            if (conn_is_connected(&g_conn)) {
+                conn_disconnect(&g_conn);
+            }
+            if (g_brush_warn) {
+                DeleteObject(g_brush_warn);
+            }
+            if (g_mono_font && g_mono_font != g_font) {
+                DeleteObject(g_mono_font);
+            }
+            PostQuitMessage(0);
+            return 0;
+
+        default:
+            break;
+    }
+    return DefWindowProcA(hwnd, msg, wParam, lParam);
+}
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    WNDCLASSEXA wc;
+    RECT rect;
+    HWND hwnd;
+    MSG msg;
+
+    (void)hPrevInstance;
+    (void)lpCmdLine;
+
+    g_hinst = hInstance;
+
+    memset(&wc, 0, sizeof(wc));
+    wc.cbSize = sizeof(wc);
+    wc.style = CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = hInstance;
+    wc.hIcon = LoadIconA(NULL, IDI_APPLICATION);
+    wc.hCursor = LoadCursorA(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.lpszClassName = "TxLiteMainWindow";
+    RegisterClassExA(&wc);
+
+    rect.left = 0;
+    rect.top = 0;
+    rect.right = CLIENT_WIDTH;
+    rect.bottom = CLIENT_HEIGHT;
+    AdjustWindowRectEx(&rect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE, 0);
+
+    hwnd = CreateWindowExA(0, "TxLiteMainWindow", "TX Lite",
+                            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+                            CW_USEDEFAULT, CW_USEDEFAULT,
+                            rect.right - rect.left, rect.bottom - rect.top,
+                            NULL, NULL, hInstance, NULL);
+    if (!hwnd) {
+        return 0;
+    }
+
+    ShowWindow(hwnd, nCmdShow);
+    UpdateWindow(hwnd);
+
+    while (GetMessage(&msg, NULL, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+    return (int)msg.wParam;
+}
