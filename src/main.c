@@ -12,7 +12,7 @@
 #include "device.h"
 
 #define CLIENT_WIDTH  700
-#define CLIENT_HEIGHT 460
+#define CLIENT_HEIGHT 440
 
 static const int BAUD_OPTIONS[] = { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 2000000 };
 #define BAUD_OPTIONS_COUNT 9
@@ -126,43 +126,18 @@ static void dev_on_command_failed(const char *message, void *ctx) {
 
 /* ---- UI update helpers ---- */
 
-static const char *mode_display_name(int mode) {
-    const char *name;
-    if (mode == DEVICE_UNKNOWN) {
-        return "-";
-    }
-    name = proto_mode_name((uint8_t)mode);
-    return name ? name : "-";
-}
-
 static void ui_refresh_status(void) {
     DeviceState *s = &g_device.state;
     char buf[64];
 
-    SetDlgItemTextA(g_hwnd, IDC_STAT_CONN, s->connected ? "Connected" : "Disconnected");
-    SetDlgItemTextA(g_hwnd, IDC_STAT_OUTPUT, s->output_on ? "ON" : "OFF");
+    SetDlgItemTextA(g_hwnd, IDC_CONN_STATUS_LBL, s->connected ? "Connected" : "Disconnected");
 
     if (s->frequency_mhz != DEVICE_UNKNOWN) {
         wsprintfA(buf, "%d MHz", s->frequency_mhz);
-        SetDlgItemTextA(g_hwnd, IDC_STAT_FREQ, buf);
         SetDlgItemTextA(g_hwnd, IDC_OUTPUT_FREQ_LBL, buf);
     } else {
-        SetDlgItemTextA(g_hwnd, IDC_STAT_FREQ, "-");
         SetDlgItemTextA(g_hwnd, IDC_OUTPUT_FREQ_LBL, "-");
     }
-    if (s->bandwidth_mhz != DEVICE_UNKNOWN) {
-        wsprintfA(buf, "%d MHz", s->bandwidth_mhz);
-        SetDlgItemTextA(g_hwnd, IDC_STAT_BW, buf);
-    } else {
-        SetDlgItemTextA(g_hwnd, IDC_STAT_BW, "-");
-    }
-    if (s->power_db != DEVICE_UNKNOWN) {
-        wsprintfA(buf, "%d dB", s->power_db);
-        SetDlgItemTextA(g_hwnd, IDC_STAT_POWER, buf);
-    } else {
-        SetDlgItemTextA(g_hwnd, IDC_STAT_POWER, "-");
-    }
-    SetDlgItemTextA(g_hwnd, IDC_STAT_MODE, mode_display_name(s->mode));
 
     SetDlgItemTextA(g_hwnd, IDC_OUTPUT_PILL, s->output_on ? "ON" : "OFF");
     CheckDlgButton(g_hwnd, IDC_OUTPUT_CHECK, s->output_on ? BST_CHECKED : BST_UNCHECKED);
@@ -173,7 +148,7 @@ static void ui_refresh_status(void) {
         SetDlgItemInt(g_hwnd, IDC_ADDR_EDIT, s->address, FALSE);
     }
 
-    InvalidateRect(GetDlgItem(g_hwnd, IDC_STAT_CONN), NULL, TRUE);
+    InvalidateRect(GetDlgItem(g_hwnd, IDC_CONN_STATUS_LBL), NULL, TRUE);
     InvalidateRect(GetDlgItem(g_hwnd, IDC_OUTPUT_PILL), NULL, TRUE);
 }
 
@@ -364,8 +339,17 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "STATIC", "MHz", SS_LEFT, 490, 124, 28, 16, 0);
     add_ctrl(hwnd, "BUTTON", "-", BS_PUSHBUTTON | WS_TABSTOP, 522, 122, 24, 20, IDC_FREQ_MINUS_BTN);
     add_ctrl(hwnd, "BUTTON", "+", BS_PUSHBUTTON | WS_TABSTOP, 550, 122, 24, 20, IDC_FREQ_PLUS_BTN);
+    add_ctrl(hwnd, "BUTTON", "Lock", BS_AUTOCHECKBOX | WS_TABSTOP, 580, 123, 60, 18, IDC_FREQ_LOCK_CHECK);
     add_ctrl(hwnd, "STATIC", "Step:", SS_LEFT, 367, 150, 32, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 401, 148, 80, 100, IDC_STEP_COMBO);
+
+    /* Frequency starts locked - editing it is a real RF-output-affecting
+     * change, so it needs a deliberate unlock (see IDC_FREQ_LOCK_CHECK in
+     * WM_COMMAND) rather than being editable by default. */
+    CheckDlgButton(hwnd, IDC_FREQ_LOCK_CHECK, BST_CHECKED);
+    EnableWindow(GetDlgItem(hwnd, IDC_FREQ_EDIT), FALSE);
+    EnableWindow(GetDlgItem(hwnd, IDC_FREQ_MINUS_BTN), FALSE);
+    EnableWindow(GetDlgItem(hwnd, IDC_FREQ_PLUS_BTN), FALSE);
 
     add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 367, 178, 62, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 431, 176, 140, 140, IDC_BW_COMBO);
@@ -377,40 +361,26 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "BUTTON", "Read Device", BS_PUSHBUTTON | WS_TABSTOP, 453, 234, 100, 26, IDC_READ_BTN);
     /* right column bottom = 6 + 268 = 274 */
 
-    /* --- Full width below both columns (below y=302, the taller of the two): Status --- */
-    add_ctrl(hwnd, "BUTTON", "Status", BS_GROUPBOX, 10, 310, 335, 96, 0);
-    add_ctrl(hwnd, "STATIC", "Connection:", SS_LEFT, 22, 332, 68, 16, 0);
-    add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 90, 332, 70, 16, IDC_STAT_CONN);
-    add_ctrl(hwnd, "STATIC", "Output:", SS_LEFT, 182, 332, 44, 16, 0);
-    add_ctrl(hwnd, "STATIC", "OFF", SS_LEFT, 228, 332, 60, 16, IDC_STAT_OUTPUT);
-
-    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 354, 62, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 84, 354, 64, 16, IDC_STAT_FREQ);
-    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 182, 354, 60, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 244, 354, 72, 16, IDC_STAT_BW);
-
-    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 22, 376, 44, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 66, 376, 60, 16, IDC_STAT_POWER);
-    add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 182, 376, 38, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 222, 376, 100, 16, IDC_STAT_MODE);
-
-    /* --- TX / RX (same row as Status, right column) --- */
-    add_ctrl(hwnd, "BUTTON", "TX / RX", BS_GROUPBOX, 355, 310, 335, 76, 0);
-    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 332, 26, 16, 0);
+    /* --- Full width below both columns (below y=302, the taller of the two): TX / RX ---
+     * Status is gone; the frequency readout it used to carry now lives on
+     * the Output box instead, and connection/output already show there
+     * too, so nothing else needed a new home. */
+    add_ctrl(hwnd, "BUTTON", "TX / RX", BS_GROUPBOX, 10, 310, 680, 76, 0);
+    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 22, 332, 26, 16, 0);
     {
-        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 330, 270, 20, IDC_TX_EDIT);
+        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 48, 330, 620, 20, IDC_TX_EDIT);
         if (tx) SendMessageA(tx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
-    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 367, 356, 26, 16, 0);
+    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 22, 356, 26, 16, 0);
     {
-        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 354, 270, 20, IDC_RX_EDIT);
+        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 48, 354, 620, 20, IDC_RX_EDIT);
         if (rx) SendMessageA(rx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
 
     /* Warning banner lives below both boxes (not inside Status) so it adds
      * zero space to either box when hidden - it only claims a row when
      * there's actually something to say. */
-    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 10, 414, 680, 32, IDC_WARNING_LBL);
+    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 10, 394, 680, 32, IDC_WARNING_LBL);
     ShowWindow(GetDlgItem(hwnd, IDC_WARNING_LBL), SW_HIDE);
 
     /* ---- populate lists ---- */
@@ -549,6 +519,23 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 }
                 case IDC_FREQ_MINUS_BTN: step_frequency(-1); break;
                 case IDC_FREQ_PLUS_BTN: step_frequency(1); break;
+                case IDC_FREQ_LOCK_CHECK: {
+                    /* Locking (the safe direction) needs no confirmation;
+                     * unlocking - about to allow changes to a live RF
+                     * output's frequency - does. */
+                    bool locked = (IsDlgButtonChecked(hwnd, IDC_FREQ_LOCK_CHECK) == BST_CHECKED);
+                    if (!locked) {
+                        if (MessageBoxA(hwnd, "Unlock frequency for editing?", "Confirm",
+                                         MB_YESNO | MB_ICONWARNING) != IDYES) {
+                            CheckDlgButton(hwnd, IDC_FREQ_LOCK_CHECK, BST_CHECKED);
+                            locked = true;
+                        }
+                    }
+                    EnableWindow(GetDlgItem(hwnd, IDC_FREQ_EDIT), !locked);
+                    EnableWindow(GetDlgItem(hwnd, IDC_FREQ_MINUS_BTN), !locked);
+                    EnableWindow(GetDlgItem(hwnd, IDC_FREQ_PLUS_BTN), !locked);
+                    break;
+                }
                 case IDC_APPLY_BTN: on_apply_clicked(); break;
                 case IDC_READ_BTN: device_read_status(&g_device); break;
                 default: break;
@@ -559,7 +546,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case WM_CTLCOLORSTATIC: {
             HWND ctl = (HWND)lParam;
             HDC hdc = (HDC)wParam;
-            if (ctl == GetDlgItem(hwnd, IDC_STAT_CONN) || ctl == GetDlgItem(hwnd, IDC_CONN_STATUS_LBL)) {
+            if (ctl == GetDlgItem(hwnd, IDC_CONN_STATUS_LBL)) {
                 SetTextColor(hdc, g_device.state.connected ? RGB(8, 127, 35) : RGB(176, 0, 32));
                 SetBkMode(hdc, TRANSPARENT);
                 return (LRESULT)GetSysColorBrush(COLOR_BTNFACE);
