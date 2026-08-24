@@ -40,11 +40,24 @@ static const int STEP_OPTIONS[] = { 1, 10, 50, 100 };
 
 #define DEFAULT_FREQUENCY_MHZ 2450
 
+/* MILITRONIX palette: light cool-gray chrome, charcoal text, flat blue
+ * accent on buttons - matching the logo's flat geometric look (solid
+ * fills, no gradients, no theming). */
+#define COLOR_APP_BG        RGB(237, 241, 242)
+#define COLOR_APP_TEXT      RGB(64, 64, 66)
+#define COLOR_APP_ACCENT    RGB(13, 110, 158)
+#define COLOR_APP_ACCENT_DIS RGB(180, 195, 205)
+#define COLOR_APP_FIELD_BG  RGB(255, 255, 255)
+
 static HINSTANCE g_hinst;
 static HWND g_hwnd;
 static HFONT g_font;
 static HFONT g_mono_font;
 static HBRUSH g_brush_warn;
+static HBRUSH g_brush_bg;
+static HBRUSH g_brush_field;
+static HBRUSH g_brush_accent;
+static HBRUSH g_brush_accent_dis;
 
 static Connection g_conn;
 static Device g_device;
@@ -300,8 +313,8 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "BUTTON", "Connection && Settings", BS_GROUPBOX, 10, 6, 335, 140, 0);
     add_ctrl(hwnd, "STATIC", "Port:", SS_LEFT, 22, 26, 32, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 24, 112, 160, IDC_PORT_COMBO);
-    add_ctrl(hwnd, "BUTTON", "Refresh", BS_PUSHBUTTON | WS_TABSTOP, 174, 24, 56, 22, IDC_REFRESH_BTN);
-    add_ctrl(hwnd, "BUTTON", "Connect", BS_PUSHBUTTON | WS_TABSTOP, 234, 24, 66, 22, IDC_CONNECT_BTN);
+    add_ctrl(hwnd, "BUTTON", "Refresh", BS_OWNERDRAW | WS_TABSTOP, 174, 24, 56, 22, IDC_REFRESH_BTN);
+    add_ctrl(hwnd, "BUTTON", "Connect", BS_OWNERDRAW | WS_TABSTOP, 234, 24, 66, 22, IDC_CONNECT_BTN);
     add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 22, 54, 290, 16, IDC_CONN_STATUS_LBL);
 
     add_ctrl(hwnd, "STATIC", "Baud:", SS_LEFT, 22, 82, 34, 16, 0);
@@ -315,8 +328,8 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "BUTTON", "Address && Output", BS_GROUPBOX, 10, 154, 335, 84, 0);
     add_ctrl(hwnd, "STATIC", "Address:", SS_LEFT, 22, 176, 52, 16, 0);
     add_ctrl(hwnd, "EDIT", "0", WS_BORDER | ES_NUMBER, 76, 174, 50, 20, IDC_ADDR_EDIT);
-    add_ctrl(hwnd, "BUTTON", "Query", BS_PUSHBUTTON | WS_TABSTOP, 132, 174, 60, 22, IDC_QUERY_ADDR_BTN);
-    add_ctrl(hwnd, "BUTTON", "Set", BS_PUSHBUTTON | WS_TABSTOP, 198, 174, 50, 22, IDC_SET_ADDR_BTN);
+    add_ctrl(hwnd, "BUTTON", "Query", BS_OWNERDRAW | WS_TABSTOP, 132, 174, 60, 22, IDC_QUERY_ADDR_BTN);
+    add_ctrl(hwnd, "BUTTON", "Set", BS_OWNERDRAW | WS_TABSTOP, 198, 174, 50, 22, IDC_SET_ADDR_BTN);
     add_ctrl(hwnd, "BUTTON", "Output ON", BS_AUTOCHECKBOX | WS_TABSTOP, 22, 204, 110, 20, IDC_OUTPUT_CHECK);
     add_ctrl(hwnd, "STATIC", "OFF", SS_CENTER, 150, 204, 50, 20, IDC_OUTPUT_PILL);
     add_ctrl(hwnd, "STATIC", "Freq:", SS_LEFT, 210, 204, 34, 20, 0);
@@ -339,8 +352,8 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 367, 150, 50, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 421, 148, 110, 100, IDC_POWER_COMBO);
 
-    add_ctrl(hwnd, "BUTTON", "Apply", BS_PUSHBUTTON | WS_TABSTOP, 367, 178, 80, 26, IDC_APPLY_BTN);
-    add_ctrl(hwnd, "BUTTON", "Read Device", BS_PUSHBUTTON | WS_TABSTOP, 453, 178, 100, 26, IDC_READ_BTN);
+    add_ctrl(hwnd, "BUTTON", "Apply", BS_OWNERDRAW | WS_TABSTOP, 367, 178, 80, 26, IDC_APPLY_BTN);
+    add_ctrl(hwnd, "BUTTON", "Read Device", BS_OWNERDRAW | WS_TABSTOP, 453, 178, 100, 26, IDC_READ_BTN);
     /* right column bottom = 6 + 212 = 218 */
 
     /* --- Full width below both columns (below y=238/218, the taller of the two):
@@ -353,8 +366,8 @@ static void build_controls(HWND hwnd) {
         add_ctrl(hwnd, "EDIT", freq_label, WS_BORDER | ES_NUMBER, 90, 266, 55, 20, IDC_FREQ_EDIT);
     }
     add_ctrl(hwnd, "STATIC", "MHz", SS_LEFT, 148, 268, 28, 16, 0);
-    add_ctrl(hwnd, "BUTTON", "-", BS_PUSHBUTTON | WS_TABSTOP, 180, 266, 24, 20, IDC_FREQ_MINUS_BTN);
-    add_ctrl(hwnd, "BUTTON", "+", BS_PUSHBUTTON | WS_TABSTOP, 206, 266, 24, 20, IDC_FREQ_PLUS_BTN);
+    add_ctrl(hwnd, "BUTTON", "-", BS_OWNERDRAW | WS_TABSTOP, 180, 266, 24, 20, IDC_FREQ_MINUS_BTN);
+    add_ctrl(hwnd, "BUTTON", "+", BS_OWNERDRAW | WS_TABSTOP, 206, 266, 24, 20, IDC_FREQ_PLUS_BTN);
     add_ctrl(hwnd, "BUTTON", "Lock", BS_AUTOCHECKBOX | WS_TABSTOP, 234, 267, 55, 18, IDC_FREQ_LOCK_CHECK);
     add_ctrl(hwnd, "STATIC", "Step:", SS_LEFT, 22, 292, 32, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 290, 80, 100, IDC_STEP_COMBO);
@@ -553,12 +566,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (ctl == GetDlgItem(hwnd, IDC_CONN_STATUS_LBL)) {
                 SetTextColor(hdc, g_device.state.connected ? RGB(8, 127, 35) : RGB(176, 0, 32));
                 SetBkMode(hdc, TRANSPARENT);
-                return (LRESULT)GetSysColorBrush(COLOR_BTNFACE);
+                return (LRESULT)g_brush_bg;
             }
             if (ctl == GetDlgItem(hwnd, IDC_OUTPUT_PILL)) {
-                SetTextColor(hdc, g_device.state.output_on ? RGB(0, 90, 200) : RGB(100, 100, 100));
+                SetTextColor(hdc, g_device.state.output_on ? COLOR_APP_ACCENT : RGB(100, 100, 100));
                 SetBkMode(hdc, TRANSPARENT);
-                return (LRESULT)GetSysColorBrush(COLOR_BTNFACE);
+                return (LRESULT)g_brush_bg;
             }
             if (ctl == GetDlgItem(hwnd, IDC_WARNING_LBL)) {
                 if (!g_brush_warn) {
@@ -567,6 +580,52 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 SetTextColor(hdc, RGB(146, 64, 14));
                 SetBkColor(hdc, RGB(254, 243, 199));
                 return (LRESULT)g_brush_warn;
+            }
+            /* Every other plain label: brand text on brand background. */
+            SetTextColor(hdc, COLOR_APP_TEXT);
+            SetBkMode(hdc, TRANSPARENT);
+            return (LRESULT)g_brush_bg;
+        }
+
+        case WM_CTLCOLORBTN: {
+            /* Checkboxes, radio buttons, and group box captions are BUTTON-
+             * class controls that aren't owner-drawn (only push buttons
+             * are), so they land here rather than WM_CTLCOLORSTATIC. */
+            HDC hdc = (HDC)wParam;
+            SetTextColor(hdc, COLOR_APP_TEXT);
+            SetBkMode(hdc, TRANSPARENT);
+            return (LRESULT)g_brush_bg;
+        }
+
+        case WM_CTLCOLOREDIT:
+        case WM_CTLCOLORLISTBOX: {
+            /* Edit boxes and combo box display/list areas: white fields on
+             * the brand background read as "input", same convention as the
+             * rest of the app's flat, unthemed styling. */
+            HDC hdc = (HDC)wParam;
+            SetTextColor(hdc, COLOR_APP_TEXT);
+            SetBkColor(hdc, COLOR_APP_FIELD_BG);
+            SetBkMode(hdc, OPAQUE);
+            return (LRESULT)g_brush_field;
+        }
+
+        case WM_DRAWITEM: {
+            DRAWITEMSTRUCT *dis = (DRAWITEMSTRUCT *)lParam;
+            if (dis->CtlType == ODT_BUTTON) {
+                char text[64];
+                bool disabled = (dis->itemState & ODS_DISABLED) != 0;
+                RECT rc = dis->rcItem;
+                FillRect(dis->hDC, &rc, disabled ? g_brush_accent_dis : g_brush_accent);
+                SetTextColor(dis->hDC, RGB(255, 255, 255));
+                SetBkMode(dis->hDC, TRANSPARENT);
+                GetWindowTextA(dis->hwndItem, text, sizeof(text));
+                DrawTextA(dis->hDC, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                if (dis->itemState & ODS_FOCUS) {
+                    RECT focus_rc = rc;
+                    InflateRect(&focus_rc, -3, -3);
+                    DrawFocusRect(dis->hDC, &focus_rc);
+                }
+                return TRUE;
             }
             break;
         }
@@ -578,6 +637,18 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
             if (g_brush_warn) {
                 DeleteObject(g_brush_warn);
+            }
+            if (g_brush_bg) {
+                DeleteObject(g_brush_bg);
+            }
+            if (g_brush_field) {
+                DeleteObject(g_brush_field);
+            }
+            if (g_brush_accent) {
+                DeleteObject(g_brush_accent);
+            }
+            if (g_brush_accent_dis) {
+                DeleteObject(g_brush_accent_dis);
             }
             if (g_mono_font && g_mono_font != g_font) {
                 DeleteObject(g_mono_font);
@@ -602,6 +673,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     g_hinst = hInstance;
 
+    /* Created before the window class registers, since hbrBackground needs
+     * a real brush up front; freed in WM_DESTROY. */
+    g_brush_bg = CreateSolidBrush(COLOR_APP_BG);
+    g_brush_field = CreateSolidBrush(COLOR_APP_FIELD_BG);
+    g_brush_accent = CreateSolidBrush(COLOR_APP_ACCENT);
+    g_brush_accent_dis = CreateSolidBrush(COLOR_APP_ACCENT_DIS);
+
     memset(&wc, 0, sizeof(wc));
     wc.cbSize = sizeof(wc);
     wc.style = CS_HREDRAW | CS_VREDRAW;
@@ -609,7 +687,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hInstance = hInstance;
     wc.hIcon = LoadIconA(NULL, IDI_APPLICATION);
     wc.hCursor = LoadCursorA(NULL, IDC_ARROW);
-    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.hbrBackground = g_brush_bg;
     wc.lpszClassName = "TxLiteMainWindow";
     RegisterClassExA(&wc);
 
