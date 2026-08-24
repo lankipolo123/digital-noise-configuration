@@ -12,7 +12,7 @@
 #include "device.h"
 
 #define CLIENT_WIDTH  700
-#define CLIENT_HEIGHT 410
+#define CLIENT_HEIGHT 380
 
 static const int BAUD_OPTIONS[] = { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 2000000 };
 #define BAUD_OPTIONS_COUNT 9
@@ -134,10 +134,13 @@ static void ui_refresh_status(void) {
 
     if (s->frequency_mhz != DEVICE_UNKNOWN) {
         wsprintfA(buf, "%d MHz", s->frequency_mhz);
-        SetDlgItemTextA(g_hwnd, IDC_STAT_FREQ, buf);
         SetDlgItemTextA(g_hwnd, IDC_OUTPUT_FREQ_LBL, buf);
+        /* Don't clobber the frequency edit while the user is mid-edit,
+         * same guard as the address box below. */
+        if (GetFocus() != GetDlgItem(g_hwnd, IDC_FREQ_EDIT)) {
+            SetDlgItemInt(g_hwnd, IDC_FREQ_EDIT, (UINT)s->frequency_mhz, FALSE);
+        }
     } else {
-        SetDlgItemTextA(g_hwnd, IDC_STAT_FREQ, "-");
         SetDlgItemTextA(g_hwnd, IDC_OUTPUT_FREQ_LBL, "-");
     }
 
@@ -320,8 +323,9 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 246, 204, 80, 20, IDC_OUTPUT_FREQ_LBL);
     /* left column bottom = 154 + 84 = 238 */
 
-    /* --- Right column (x=355, w=335): Signal Settings --- */
-    add_ctrl(hwnd, "BUTTON", "Signal Settings", BS_GROUPBOX, 355, 6, 335, 268, 0);
+    /* --- Right column (x=355, w=335): Signal Settings (mode/bandwidth/power only -
+     * frequency now lives in its own box below, where it's actually editable) --- */
+    add_ctrl(hwnd, "BUTTON", "Signal Settings", BS_GROUPBOX, 355, 6, 335, 212, 0);
     add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 367, 26, 270, 16, 0);
     add_ctrl(hwnd, "BUTTON", "White Noise", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 367, 44, 150, 18, IDC_RB_WHITE);
     add_ctrl(hwnd, "BUTTON", "Linear Sweep", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 62, 150, 18, IDC_RB_SWEEP);
@@ -329,18 +333,31 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "BUTTON", "Single (unconfirmed)", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 98, 190, 18, IDC_RB_SINGLE);
     CheckDlgButton(hwnd, IDC_RB_WHITE, BST_CHECKED);
 
-    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 367, 124, 62, 16, 0);
+    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 367, 124, 62, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 431, 122, 140, 140, IDC_BW_COMBO);
+
+    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 367, 150, 50, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 421, 148, 110, 100, IDC_POWER_COMBO);
+
+    add_ctrl(hwnd, "BUTTON", "Apply", BS_PUSHBUTTON | WS_TABSTOP, 367, 178, 80, 26, IDC_APPLY_BTN);
+    add_ctrl(hwnd, "BUTTON", "Read Device", BS_PUSHBUTTON | WS_TABSTOP, 453, 178, 100, 26, IDC_READ_BTN);
+    /* right column bottom = 6 + 212 = 218 */
+
+    /* --- Full width below both columns (below y=238/218, the taller of the two):
+     * Frequency - the actual editable controls, not a readout --- */
+    add_ctrl(hwnd, "BUTTON", "Frequency", BS_GROUPBOX, 10, 246, 335, 78, 0);
+    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 268, 64, 16, 0);
     {
         char freq_label[8];
         wsprintfA(freq_label, "%d", DEFAULT_FREQUENCY_MHZ);
-        add_ctrl(hwnd, "EDIT", freq_label, WS_BORDER | ES_NUMBER, 431, 122, 55, 20, IDC_FREQ_EDIT);
+        add_ctrl(hwnd, "EDIT", freq_label, WS_BORDER | ES_NUMBER, 90, 266, 55, 20, IDC_FREQ_EDIT);
     }
-    add_ctrl(hwnd, "STATIC", "MHz", SS_LEFT, 490, 124, 28, 16, 0);
-    add_ctrl(hwnd, "BUTTON", "-", BS_PUSHBUTTON | WS_TABSTOP, 522, 122, 24, 20, IDC_FREQ_MINUS_BTN);
-    add_ctrl(hwnd, "BUTTON", "+", BS_PUSHBUTTON | WS_TABSTOP, 550, 122, 24, 20, IDC_FREQ_PLUS_BTN);
-    add_ctrl(hwnd, "BUTTON", "Lock", BS_AUTOCHECKBOX | WS_TABSTOP, 580, 123, 60, 18, IDC_FREQ_LOCK_CHECK);
-    add_ctrl(hwnd, "STATIC", "Step:", SS_LEFT, 367, 150, 32, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 401, 148, 80, 100, IDC_STEP_COMBO);
+    add_ctrl(hwnd, "STATIC", "MHz", SS_LEFT, 148, 268, 28, 16, 0);
+    add_ctrl(hwnd, "BUTTON", "-", BS_PUSHBUTTON | WS_TABSTOP, 180, 266, 24, 20, IDC_FREQ_MINUS_BTN);
+    add_ctrl(hwnd, "BUTTON", "+", BS_PUSHBUTTON | WS_TABSTOP, 206, 266, 24, 20, IDC_FREQ_PLUS_BTN);
+    add_ctrl(hwnd, "BUTTON", "Lock", BS_AUTOCHECKBOX | WS_TABSTOP, 234, 267, 55, 18, IDC_FREQ_LOCK_CHECK);
+    add_ctrl(hwnd, "STATIC", "Step:", SS_LEFT, 22, 292, 32, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 290, 80, 100, IDC_STEP_COMBO);
 
     /* Frequency starts locked - editing it is a real RF-output-affecting
      * change, so it needs a deliberate unlock (see IDC_FREQ_LOCK_CHECK in
@@ -350,38 +367,24 @@ static void build_controls(HWND hwnd) {
     EnableWindow(GetDlgItem(hwnd, IDC_FREQ_MINUS_BTN), FALSE);
     EnableWindow(GetDlgItem(hwnd, IDC_FREQ_PLUS_BTN), FALSE);
 
-    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 367, 178, 62, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 431, 176, 140, 140, IDC_BW_COMBO);
-
-    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 367, 206, 50, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 421, 204, 110, 100, IDC_POWER_COMBO);
-
-    add_ctrl(hwnd, "BUTTON", "Apply", BS_PUSHBUTTON | WS_TABSTOP, 367, 234, 80, 26, IDC_APPLY_BTN);
-    add_ctrl(hwnd, "BUTTON", "Read Device", BS_PUSHBUTTON | WS_TABSTOP, 453, 234, 100, 26, IDC_READ_BTN);
-    /* right column bottom = 6 + 268 = 274 */
-
-    /* --- Full width below both columns (below y=238/274, the taller of the two): Frequency --- */
-    add_ctrl(hwnd, "BUTTON", "Frequency", BS_GROUPBOX, 10, 282, 335, 76, 0);
-    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 314, 74, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 100, 314, 140, 16, IDC_STAT_FREQ);
-
-    /* --- TX / RX (same row as Frequency, right column) --- */
-    add_ctrl(hwnd, "BUTTON", "TX / RX", BS_GROUPBOX, 355, 282, 335, 76, 0);
-    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 304, 26, 16, 0);
+    /* --- TX / RX (same row as Frequency, right column - same height, same
+     * two-row rhythm, so nothing looks lopsided) --- */
+    add_ctrl(hwnd, "BUTTON", "TX / RX", BS_GROUPBOX, 355, 246, 335, 78, 0);
+    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 268, 26, 16, 0);
     {
-        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 302, 270, 20, IDC_TX_EDIT);
+        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 266, 270, 20, IDC_TX_EDIT);
         if (tx) SendMessageA(tx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
-    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 367, 328, 26, 16, 0);
+    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 367, 292, 26, 16, 0);
     {
-        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 326, 270, 20, IDC_RX_EDIT);
+        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 290, 270, 20, IDC_RX_EDIT);
         if (rx) SendMessageA(rx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
 
     /* Warning banner lives below both boxes so it adds zero space to
      * either when hidden - it only claims a row when there's actually
      * something to say. */
-    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 10, 366, 680, 32, IDC_WARNING_LBL);
+    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 10, 332, 680, 32, IDC_WARNING_LBL);
     ShowWindow(GetDlgItem(hwnd, IDC_WARNING_LBL), SW_HIDE);
 
     /* ---- populate lists ---- */
