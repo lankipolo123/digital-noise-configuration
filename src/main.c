@@ -12,7 +12,7 @@
 #include "device.h"
 
 #define CLIENT_WIDTH  700
-#define CLIENT_HEIGHT 470
+#define CLIENT_HEIGHT 410
 
 static const int BAUD_OPTIONS[] = { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 2000000 };
 #define BAUD_OPTIONS_COUNT 9
@@ -126,22 +126,11 @@ static void dev_on_command_failed(const char *message, void *ctx) {
 
 /* ---- UI update helpers ---- */
 
-static const char *mode_display_name(int mode) {
-    const char *name;
-    if (mode == DEVICE_UNKNOWN) {
-        return "-";
-    }
-    name = proto_mode_name((uint8_t)mode);
-    return name ? name : "-";
-}
-
 static void ui_refresh_status(void) {
     DeviceState *s = &g_device.state;
     char buf[64];
 
     SetDlgItemTextA(g_hwnd, IDC_CONN_STATUS_LBL, s->connected ? "Connected" : "Disconnected");
-    SetDlgItemTextA(g_hwnd, IDC_STAT_CONN, s->connected ? "Connected" : "Disconnected");
-    SetDlgItemTextA(g_hwnd, IDC_STAT_OUTPUT, s->output_on ? "ON" : "OFF");
 
     if (s->frequency_mhz != DEVICE_UNKNOWN) {
         wsprintfA(buf, "%d MHz", s->frequency_mhz);
@@ -151,19 +140,6 @@ static void ui_refresh_status(void) {
         SetDlgItemTextA(g_hwnd, IDC_STAT_FREQ, "-");
         SetDlgItemTextA(g_hwnd, IDC_OUTPUT_FREQ_LBL, "-");
     }
-    if (s->bandwidth_mhz != DEVICE_UNKNOWN) {
-        wsprintfA(buf, "%d MHz", s->bandwidth_mhz);
-        SetDlgItemTextA(g_hwnd, IDC_STAT_BW, buf);
-    } else {
-        SetDlgItemTextA(g_hwnd, IDC_STAT_BW, "-");
-    }
-    if (s->power_db != DEVICE_UNKNOWN) {
-        wsprintfA(buf, "%d dB", s->power_db);
-        SetDlgItemTextA(g_hwnd, IDC_STAT_POWER, buf);
-    } else {
-        SetDlgItemTextA(g_hwnd, IDC_STAT_POWER, "-");
-    }
-    SetDlgItemTextA(g_hwnd, IDC_STAT_MODE, mode_display_name(s->mode));
 
     SetDlgItemTextA(g_hwnd, IDC_OUTPUT_PILL, s->output_on ? "ON" : "OFF");
     CheckDlgButton(g_hwnd, IDC_OUTPUT_CHECK, s->output_on ? BST_CHECKED : BST_UNCHECKED);
@@ -174,7 +150,7 @@ static void ui_refresh_status(void) {
         SetDlgItemInt(g_hwnd, IDC_ADDR_EDIT, s->address, FALSE);
     }
 
-    InvalidateRect(GetDlgItem(g_hwnd, IDC_STAT_CONN), NULL, TRUE);
+    InvalidateRect(GetDlgItem(g_hwnd, IDC_CONN_STATUS_LBL), NULL, TRUE);
     InvalidateRect(GetDlgItem(g_hwnd, IDC_OUTPUT_PILL), NULL, TRUE);
 }
 
@@ -332,25 +308,20 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "STATIC", "Parity:", SS_LEFT, 142, 110, 40, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 184, 108, 70, 100, IDC_PARITY_COMBO);
 
-    /* --- Left column: Module Address & Power (combined) --- */
-    add_ctrl(hwnd, "BUTTON", "Address && Power", BS_GROUPBOX, 10, 154, 335, 86, 0);
+    /* --- Left column: Module Address & Output (combined) --- */
+    add_ctrl(hwnd, "BUTTON", "Address && Output", BS_GROUPBOX, 10, 154, 335, 84, 0);
     add_ctrl(hwnd, "STATIC", "Address:", SS_LEFT, 22, 176, 52, 16, 0);
     add_ctrl(hwnd, "EDIT", "0", WS_BORDER | ES_NUMBER, 76, 174, 50, 20, IDC_ADDR_EDIT);
     add_ctrl(hwnd, "BUTTON", "Query", BS_PUSHBUTTON | WS_TABSTOP, 132, 174, 60, 22, IDC_QUERY_ADDR_BTN);
     add_ctrl(hwnd, "BUTTON", "Set", BS_PUSHBUTTON | WS_TABSTOP, 198, 174, 50, 22, IDC_SET_ADDR_BTN);
-    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 22, 204, 50, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 72, 202, 110, 100, IDC_POWER_COMBO);
+    add_ctrl(hwnd, "BUTTON", "Output ON", BS_AUTOCHECKBOX | WS_TABSTOP, 22, 204, 110, 20, IDC_OUTPUT_CHECK);
+    add_ctrl(hwnd, "STATIC", "OFF", SS_CENTER, 150, 204, 50, 20, IDC_OUTPUT_PILL);
+    add_ctrl(hwnd, "STATIC", "Freq:", SS_LEFT, 210, 204, 34, 20, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 246, 204, 80, 20, IDC_OUTPUT_FREQ_LBL);
+    /* left column bottom = 154 + 84 = 238 */
 
-    /* --- Left column: Output --- */
-    add_ctrl(hwnd, "BUTTON", "Output", BS_GROUPBOX, 10, 248, 335, 70, 0);
-    add_ctrl(hwnd, "BUTTON", "Output ON", BS_AUTOCHECKBOX | WS_TABSTOP, 22, 270, 110, 20, IDC_OUTPUT_CHECK);
-    add_ctrl(hwnd, "STATIC", "OFF", SS_CENTER, 150, 270, 50, 20, IDC_OUTPUT_PILL);
-    add_ctrl(hwnd, "STATIC", "Freq:", SS_LEFT, 210, 270, 34, 20, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 246, 270, 80, 20, IDC_OUTPUT_FREQ_LBL);
-    /* left column bottom = 248 + 70 = 318 */
-
-    /* --- Right column (x=355, w=335): Signal Settings (Power lives with Address now) --- */
-    add_ctrl(hwnd, "BUTTON", "Signal Settings", BS_GROUPBOX, 355, 6, 335, 240, 0);
+    /* --- Right column (x=355, w=335): Signal Settings --- */
+    add_ctrl(hwnd, "BUTTON", "Signal Settings", BS_GROUPBOX, 355, 6, 335, 268, 0);
     add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 367, 26, 270, 16, 0);
     add_ctrl(hwnd, "BUTTON", "White Noise", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 367, 44, 150, 18, IDC_RB_WHITE);
     add_ctrl(hwnd, "BUTTON", "Linear Sweep", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 62, 150, 18, IDC_RB_SWEEP);
@@ -382,44 +353,35 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 367, 178, 62, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 431, 176, 140, 140, IDC_BW_COMBO);
 
-    add_ctrl(hwnd, "BUTTON", "Apply", BS_PUSHBUTTON | WS_TABSTOP, 367, 206, 80, 26, IDC_APPLY_BTN);
-    add_ctrl(hwnd, "BUTTON", "Read Device", BS_PUSHBUTTON | WS_TABSTOP, 453, 206, 100, 26, IDC_READ_BTN);
-    /* right column bottom = 6 + 240 = 246 */
+    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 367, 206, 50, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 421, 204, 110, 100, IDC_POWER_COMBO);
 
-    /* --- Full width below both columns (below y=318, the taller of the two): Status --- */
-    add_ctrl(hwnd, "BUTTON", "Status", BS_GROUPBOX, 10, 326, 335, 96, 0);
-    add_ctrl(hwnd, "STATIC", "Connection:", SS_LEFT, 22, 348, 68, 16, 0);
-    add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 90, 348, 70, 16, IDC_STAT_CONN);
-    add_ctrl(hwnd, "STATIC", "Output:", SS_LEFT, 182, 348, 44, 16, 0);
-    add_ctrl(hwnd, "STATIC", "OFF", SS_LEFT, 228, 348, 60, 16, IDC_STAT_OUTPUT);
+    add_ctrl(hwnd, "BUTTON", "Apply", BS_PUSHBUTTON | WS_TABSTOP, 367, 234, 80, 26, IDC_APPLY_BTN);
+    add_ctrl(hwnd, "BUTTON", "Read Device", BS_PUSHBUTTON | WS_TABSTOP, 453, 234, 100, 26, IDC_READ_BTN);
+    /* right column bottom = 6 + 268 = 274 */
 
-    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 370, 62, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 84, 370, 64, 16, IDC_STAT_FREQ);
-    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 182, 370, 60, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 244, 370, 72, 16, IDC_STAT_BW);
+    /* --- Full width below both columns (below y=238/274, the taller of the two): Frequency --- */
+    add_ctrl(hwnd, "BUTTON", "Frequency", BS_GROUPBOX, 10, 282, 335, 76, 0);
+    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 314, 74, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 100, 314, 140, 16, IDC_STAT_FREQ);
 
-    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 22, 392, 44, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 66, 392, 60, 16, IDC_STAT_POWER);
-    add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 182, 392, 38, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 222, 392, 100, 16, IDC_STAT_MODE);
-
-    /* --- TX / RX (same row as Status, right column) --- */
-    add_ctrl(hwnd, "BUTTON", "TX / RX", BS_GROUPBOX, 355, 326, 335, 76, 0);
-    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 348, 26, 16, 0);
+    /* --- TX / RX (same row as Frequency, right column) --- */
+    add_ctrl(hwnd, "BUTTON", "TX / RX", BS_GROUPBOX, 355, 282, 335, 76, 0);
+    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 304, 26, 16, 0);
     {
-        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 346, 270, 20, IDC_TX_EDIT);
+        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 302, 270, 20, IDC_TX_EDIT);
         if (tx) SendMessageA(tx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
-    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 367, 372, 26, 16, 0);
+    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 367, 328, 26, 16, 0);
     {
-        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 370, 270, 20, IDC_RX_EDIT);
+        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 326, 270, 20, IDC_RX_EDIT);
         if (rx) SendMessageA(rx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
 
-    /* Warning banner lives below both boxes (not inside Status) so it adds
-     * zero space to either box when hidden - it only claims a row when
-     * there's actually something to say. */
-    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 10, 430, 680, 32, IDC_WARNING_LBL);
+    /* Warning banner lives below both boxes so it adds zero space to
+     * either when hidden - it only claims a row when there's actually
+     * something to say. */
+    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 10, 366, 680, 32, IDC_WARNING_LBL);
     ShowWindow(GetDlgItem(hwnd, IDC_WARNING_LBL), SW_HIDE);
 
     /* ---- populate lists ---- */
@@ -585,7 +547,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case WM_CTLCOLORSTATIC: {
             HWND ctl = (HWND)lParam;
             HDC hdc = (HDC)wParam;
-            if (ctl == GetDlgItem(hwnd, IDC_STAT_CONN) || ctl == GetDlgItem(hwnd, IDC_CONN_STATUS_LBL)) {
+            if (ctl == GetDlgItem(hwnd, IDC_CONN_STATUS_LBL)) {
                 SetTextColor(hdc, g_device.state.connected ? RGB(8, 127, 35) : RGB(176, 0, 32));
                 SetBkMode(hdc, TRANSPARENT);
                 return (LRESULT)GetSysColorBrush(COLOR_BTNFACE);
