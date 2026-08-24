@@ -11,8 +11,8 @@
 #include "connection.h"
 #include "device.h"
 
-#define CLIENT_WIDTH  460
-#define CLIENT_HEIGHT 770
+#define CLIENT_WIDTH  700
+#define CLIENT_HEIGHT 650
 
 static const int BAUD_OPTIONS[] = { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 2000000 };
 #define BAUD_OPTIONS_COUNT 9
@@ -318,99 +318,107 @@ static void on_emergency_stop(void) {
 static void build_controls(HWND hwnd) {
     unsigned i;
 
-    /* Connection & Settings */
-    add_ctrl(hwnd, "BUTTON", "Connection && Settings", BS_GROUPBOX, 10, 6, 440, 130, 0);
-    add_ctrl(hwnd, "STATIC", "Port:", SS_LEFT, 22, 26, 36, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 60, 24, 140, 200, IDC_PORT_COMBO);
-    add_ctrl(hwnd, "BUTTON", "Refresh", BS_PUSHBUTTON | WS_TABSTOP, 206, 24, 60, 22, IDC_REFRESH_BTN);
-    add_ctrl(hwnd, "BUTTON", "Connect", BS_PUSHBUTTON | WS_TABSTOP, 272, 24, 80, 22, IDC_CONNECT_BTN);
-    add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 358, 27, 84, 16, IDC_CONN_STATUS_LBL);
+    /* Two columns: left = connection/address/output, right = signal settings.
+     * Left column is three stacked boxes; right column is one taller box,
+     * so the next full-width row starts below whichever column is taller. */
 
-    add_ctrl(hwnd, "STATIC", "Baud:", SS_LEFT, 22, 58, 36, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 60, 56, 90, 160, IDC_BAUD_COMBO);
-    add_ctrl(hwnd, "STATIC", "Data Bits:", SS_LEFT, 158, 58, 58, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 220, 56, 45, 100, IDC_DATABITS_COMBO);
-    add_ctrl(hwnd, "STATIC", "Parity:", SS_LEFT, 273, 58, 40, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 316, 56, 80, 120, IDC_PARITY_COMBO);
+    /* --- Left column (x=10, w=335): Connection & Settings --- */
+    add_ctrl(hwnd, "BUTTON", "Connection && Settings", BS_GROUPBOX, 10, 6, 335, 140, 0);
+    add_ctrl(hwnd, "STATIC", "Port:", SS_LEFT, 22, 26, 32, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 24, 112, 160, IDC_PORT_COMBO);
+    add_ctrl(hwnd, "BUTTON", "Refresh", BS_PUSHBUTTON | WS_TABSTOP, 174, 24, 56, 22, IDC_REFRESH_BTN);
+    add_ctrl(hwnd, "BUTTON", "Connect", BS_PUSHBUTTON | WS_TABSTOP, 234, 24, 66, 22, IDC_CONNECT_BTN);
+    add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 22, 54, 290, 16, IDC_CONN_STATUS_LBL);
 
-    add_ctrl(hwnd, "STATIC", "Address:", SS_LEFT, 22, 90, 52, 16, 0);
-    add_ctrl(hwnd, "EDIT", "0", WS_BORDER | ES_NUMBER, 76, 88, 50, 20, IDC_ADDR_EDIT);
-    add_ctrl(hwnd, "BUTTON", "Query", BS_PUSHBUTTON | WS_TABSTOP, 132, 88, 60, 22, IDC_QUERY_ADDR_BTN);
-    add_ctrl(hwnd, "BUTTON", "Set", BS_PUSHBUTTON | WS_TABSTOP, 198, 88, 50, 22, IDC_SET_ADDR_BTN);
+    add_ctrl(hwnd, "STATIC", "Baud:", SS_LEFT, 22, 82, 34, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 58, 80, 90, 140, IDC_BAUD_COMBO);
+    add_ctrl(hwnd, "STATIC", "Data Bits:", SS_LEFT, 22, 110, 60, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 86, 108, 45, 100, IDC_DATABITS_COMBO);
+    add_ctrl(hwnd, "STATIC", "Parity:", SS_LEFT, 142, 110, 40, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 184, 108, 70, 100, IDC_PARITY_COMBO);
 
-    /* Output */
-    add_ctrl(hwnd, "BUTTON", "Output", BS_GROUPBOX, 10, 144, 440, 54, 0);
-    add_ctrl(hwnd, "BUTTON", "Output ON", BS_AUTOCHECKBOX | WS_TABSTOP, 22, 166, 110, 20, IDC_OUTPUT_CHECK);
-    add_ctrl(hwnd, "STATIC", "OFF", SS_CENTER, 150, 166, 60, 20, IDC_OUTPUT_PILL);
+    /* --- Left column: Module Address --- */
+    add_ctrl(hwnd, "BUTTON", "Module Address", BS_GROUPBOX, 10, 154, 335, 70, 0);
+    add_ctrl(hwnd, "STATIC", "Address:", SS_LEFT, 22, 176, 52, 16, 0);
+    add_ctrl(hwnd, "EDIT", "0", WS_BORDER | ES_NUMBER, 76, 174, 50, 20, IDC_ADDR_EDIT);
+    add_ctrl(hwnd, "BUTTON", "Query", BS_PUSHBUTTON | WS_TABSTOP, 132, 174, 60, 22, IDC_QUERY_ADDR_BTN);
+    add_ctrl(hwnd, "BUTTON", "Set", BS_PUSHBUTTON | WS_TABSTOP, 198, 174, 50, 22, IDC_SET_ADDR_BTN);
 
-    /* Status */
-    add_ctrl(hwnd, "BUTTON", "Status", BS_GROUPBOX, 10, 206, 440, 190, 0);
-    add_ctrl(hwnd, "STATIC", "Connection:", SS_LEFT, 22, 228, 74, 16, 0);
-    add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 100, 228, 120, 16, IDC_STAT_CONN);
-    add_ctrl(hwnd, "STATIC", "Output:", SS_LEFT, 230, 228, 50, 16, 0);
-    add_ctrl(hwnd, "STATIC", "OFF", SS_LEFT, 284, 228, 80, 16, IDC_STAT_OUTPUT);
+    /* --- Left column: Output --- */
+    add_ctrl(hwnd, "BUTTON", "Output", BS_GROUPBOX, 10, 232, 335, 70, 0);
+    add_ctrl(hwnd, "BUTTON", "Output ON", BS_AUTOCHECKBOX | WS_TABSTOP, 22, 254, 110, 20, IDC_OUTPUT_CHECK);
+    add_ctrl(hwnd, "STATIC", "OFF", SS_CENTER, 150, 254, 60, 20, IDC_OUTPUT_PILL);
+    /* left column bottom = 232 + 70 = 302 */
 
-    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 252, 74, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 100, 252, 120, 16, IDC_STAT_FREQ);
-    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 230, 252, 64, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 298, 252, 80, 16, IDC_STAT_BW);
-
-    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 22, 276, 74, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 100, 276, 120, 16, IDC_STAT_POWER);
-    add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 230, 276, 50, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 284, 276, 140, 16, IDC_STAT_MODE);
-
-    add_ctrl(hwnd, "STATIC", "Last Command:", SS_LEFT, 22, 300, 90, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 114, 300, 320, 16, IDC_STAT_LASTCMD);
-
-    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 22, 322, 410, 60, IDC_WARNING_LBL);
-    ShowWindow(GetDlgItem(hwnd, IDC_WARNING_LBL), SW_HIDE);
-
-    /* Signal Settings */
-    add_ctrl(hwnd, "BUTTON", "Signal Settings", BS_GROUPBOX, 10, 400, 440, 220, 0);
-    add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 22, 420, 40, 16, 0);
-    add_ctrl(hwnd, "BUTTON", "White Noise", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 62, 420, 95, 18, IDC_RB_WHITE);
-    add_ctrl(hwnd, "BUTTON", "Linear Sweep", BS_AUTORADIOBUTTON | WS_TABSTOP, 160, 420, 100, 18, IDC_RB_SWEEP);
-    add_ctrl(hwnd, "BUTTON", "Comb Spectrum", BS_AUTORADIOBUTTON | WS_TABSTOP, 62, 440, 100, 18, IDC_RB_COMB);
-    add_ctrl(hwnd, "BUTTON", "Single (unconfirmed)", BS_AUTORADIOBUTTON | WS_TABSTOP, 160, 440, 160, 18, IDC_RB_SINGLE);
+    /* --- Right column (x=355, w=335): Signal Settings --- */
+    add_ctrl(hwnd, "BUTTON", "Signal Settings", BS_GROUPBOX, 355, 6, 335, 268, 0);
+    add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 367, 26, 270, 16, 0);
+    add_ctrl(hwnd, "BUTTON", "White Noise", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 367, 44, 150, 18, IDC_RB_WHITE);
+    add_ctrl(hwnd, "BUTTON", "Linear Sweep", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 62, 150, 18, IDC_RB_SWEEP);
+    add_ctrl(hwnd, "BUTTON", "Comb Spectrum", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 80, 150, 18, IDC_RB_COMB);
+    add_ctrl(hwnd, "BUTTON", "Single (unconfirmed)", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 98, 190, 18, IDC_RB_SINGLE);
     CheckDlgButton(hwnd, IDC_RB_WHITE, BST_CHECKED);
 
-    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 468, 64, 16, 0);
+    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 367, 124, 62, 16, 0);
     {
         char freq_label[8];
         wsprintfA(freq_label, "%d", DEFAULT_FREQUENCY_MHZ);
-        add_ctrl(hwnd, "EDIT", freq_label, WS_BORDER | ES_NUMBER, 88, 466, 60, 20, IDC_FREQ_EDIT);
+        add_ctrl(hwnd, "EDIT", freq_label, WS_BORDER | ES_NUMBER, 431, 122, 55, 20, IDC_FREQ_EDIT);
     }
-    add_ctrl(hwnd, "STATIC", "MHz", SS_LEFT, 150, 468, 26, 16, 0);
-    add_ctrl(hwnd, "BUTTON", "-", BS_PUSHBUTTON | WS_TABSTOP, 180, 466, 24, 20, IDC_FREQ_MINUS_BTN);
-    add_ctrl(hwnd, "BUTTON", "+", BS_PUSHBUTTON | WS_TABSTOP, 206, 466, 24, 20, IDC_FREQ_PLUS_BTN);
-    add_ctrl(hwnd, "STATIC", "Step:", SS_LEFT, 236, 468, 30, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 268, 466, 80, 100, IDC_STEP_COMBO);
+    add_ctrl(hwnd, "STATIC", "MHz", SS_LEFT, 490, 124, 28, 16, 0);
+    add_ctrl(hwnd, "BUTTON", "-", BS_PUSHBUTTON | WS_TABSTOP, 522, 122, 24, 20, IDC_FREQ_MINUS_BTN);
+    add_ctrl(hwnd, "BUTTON", "+", BS_PUSHBUTTON | WS_TABSTOP, 550, 122, 24, 20, IDC_FREQ_PLUS_BTN);
+    add_ctrl(hwnd, "STATIC", "Step:", SS_LEFT, 367, 150, 32, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 401, 148, 80, 100, IDC_STEP_COMBO);
 
-    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 22, 496, 64, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 88, 494, 160, 160, IDC_BW_COMBO);
+    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 367, 178, 62, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 431, 176, 140, 140, IDC_BW_COMBO);
 
-    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 22, 524, 64, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 88, 522, 110, 100, IDC_POWER_COMBO);
+    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 367, 206, 50, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 421, 204, 110, 100, IDC_POWER_COMBO);
 
-    add_ctrl(hwnd, "BUTTON", "Apply", BS_PUSHBUTTON | WS_TABSTOP, 22, 552, 80, 26, IDC_APPLY_BTN);
-    add_ctrl(hwnd, "BUTTON", "Read Device", BS_PUSHBUTTON | WS_TABSTOP, 108, 552, 100, 26, IDC_READ_BTN);
+    add_ctrl(hwnd, "BUTTON", "Apply", BS_PUSHBUTTON | WS_TABSTOP, 367, 234, 80, 26, IDC_APPLY_BTN);
+    add_ctrl(hwnd, "BUTTON", "Read Device", BS_PUSHBUTTON | WS_TABSTOP, 453, 234, 100, 26, IDC_READ_BTN);
+    /* right column bottom = 6 + 268 = 274 */
 
-    /* TX / RX */
-    add_ctrl(hwnd, "BUTTON", "TX / RX", BS_GROUPBOX, 10, 626, 440, 86, 0);
-    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 22, 650, 26, 16, 0);
+    /* --- Full width below both columns (below y=302, the taller of the two): Status --- */
+    add_ctrl(hwnd, "BUTTON", "Status", BS_GROUPBOX, 10, 310, 680, 190, 0);
+    add_ctrl(hwnd, "STATIC", "Connection:", SS_LEFT, 22, 332, 74, 16, 0);
+    add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 100, 332, 140, 16, IDC_STAT_CONN);
+    add_ctrl(hwnd, "STATIC", "Output:", SS_LEFT, 380, 332, 50, 16, 0);
+    add_ctrl(hwnd, "STATIC", "OFF", SS_LEFT, 434, 332, 100, 16, IDC_STAT_OUTPUT);
+
+    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 356, 74, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 100, 356, 140, 16, IDC_STAT_FREQ);
+    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 380, 356, 64, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 448, 356, 100, 16, IDC_STAT_BW);
+
+    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 22, 380, 74, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 100, 380, 140, 16, IDC_STAT_POWER);
+    add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 380, 380, 50, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 434, 380, 180, 16, IDC_STAT_MODE);
+
+    add_ctrl(hwnd, "STATIC", "Last Command:", SS_LEFT, 22, 404, 90, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 114, 404, 560, 16, IDC_STAT_LASTCMD);
+
+    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 22, 428, 656, 60, IDC_WARNING_LBL);
+    ShowWindow(GetDlgItem(hwnd, IDC_WARNING_LBL), SW_HIDE);
+
+    /* --- TX / RX --- */
+    add_ctrl(hwnd, "BUTTON", "TX / RX", BS_GROUPBOX, 10, 508, 680, 86, 0);
+    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 22, 530, 26, 16, 0);
     {
-        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 52, 648, 384, 20, IDC_TX_EDIT);
+        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 52, 528, 610, 20, IDC_TX_EDIT);
         if (tx) SendMessageA(tx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
-    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 22, 674, 26, 16, 0);
+    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 22, 554, 26, 16, 0);
     {
-        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 52, 672, 384, 20, IDC_RX_EDIT);
+        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 52, 552, 610, 20, IDC_RX_EDIT);
         if (rx) SendMessageA(rx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
 
     /* Emergency stop */
-    add_ctrl(hwnd, "BUTTON", "EMERGENCY STOP - OUTPUT OFF", BS_PUSHBUTTON | WS_TABSTOP, 10, 720, 440, 34, IDC_ESTOP_BTN);
+    add_ctrl(hwnd, "BUTTON", "EMERGENCY STOP - OUTPUT OFF", BS_PUSHBUTTON | WS_TABSTOP, 10, 602, 680, 34, IDC_ESTOP_BTN);
 
     /* ---- populate lists ---- */
 
