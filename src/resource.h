@@ -15,6 +15,12 @@
 #define IDC_OUTPUT_PILL      1012
 #define IDC_OUTPUT_FREQ_LBL  1035
 
+#define IDC_STAT_CONN        1013
+#define IDC_STAT_OUTPUT      1014
+#define IDC_STAT_FREQ        1015
+#define IDC_STAT_BW          1016
+#define IDC_STAT_POWER       1017
+#define IDC_STAT_MODE        1018
 #define IDC_WARNING_LBL      1020
 
 #define IDC_RB_WHITE         1021
