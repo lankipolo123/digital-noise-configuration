@@ -8,9 +8,6 @@
 #include <stdbool.h>
 
 #define SERIAL_DEFAULT_BAUD 115200
-/* Matches SerialManager's 0.2s pyserial timeout: a read blocks until data
- * arrives or this many ms pass, whichever is first. */
-#define SERIAL_READ_TIMEOUT_MS 200
 
 typedef struct {
     HANDLE handle;
@@ -24,9 +21,11 @@ bool serial_open(SerialPort *sp, const char *port_name, DWORD baud, char parity,
 void serial_close(SerialPort *sp);
 bool serial_is_open(const SerialPort *sp);
 
-/* Returns false only on a hard I/O error; a timeout with zero bytes read
- * is not an error - out_len is set to 0 and true is returned, mirroring
- * pyserial's read() returning b"" on timeout. */
+/* serial_read never blocks: it returns immediately with whatever bytes are
+ * already sitting in the driver's input buffer (possibly zero). The app
+ * polls this from a WM_TIMER tick rather than using a reader thread, so a
+ * blocking read would freeze the UI message loop instead. Returns false
+ * only on a hard I/O error - zero bytes available is not an error. */
 bool serial_write(SerialPort *sp, const uint8_t *data, DWORD len, DWORD *out_written);
 bool serial_read(SerialPort *sp, uint8_t *buf, DWORD buf_size, DWORD *out_len);
 

@@ -46,13 +46,13 @@ bool serial_open(SerialPort *sp, const char *port_name, DWORD baud, char parity,
         return false;
     }
 
-    /* Fixed ~200ms total read timeout, matching pyserial's timeout=0.2:
-     * ReadFile returns whatever has arrived (possibly nothing) once either
-     * a 50ms gap follows received bytes or the 200ms total elapses. */
+    /* Non-blocking read: MAXDWORD interval timeout with both total-timeout
+     * fields at 0 is the documented Win32 idiom for "return immediately
+     * with whatever's already received, even if that's nothing". */
     ZeroMemory(&timeouts, sizeof(timeouts));
-    timeouts.ReadIntervalTimeout = 50;
+    timeouts.ReadIntervalTimeout = MAXDWORD;
     timeouts.ReadTotalTimeoutMultiplier = 0;
-    timeouts.ReadTotalTimeoutConstant = SERIAL_READ_TIMEOUT_MS;
+    timeouts.ReadTotalTimeoutConstant = 0;
     timeouts.WriteTotalTimeoutMultiplier = 0;
     timeouts.WriteTotalTimeoutConstant = 0;
     if (!SetCommTimeouts(sp->handle, &timeouts)) {
