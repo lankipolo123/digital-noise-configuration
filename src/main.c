@@ -12,7 +12,7 @@
 #include "device.h"
 
 #define CLIENT_WIDTH  700
-#define CLIENT_HEIGHT 480
+#define CLIENT_HEIGHT 460
 
 static const int BAUD_OPTIONS[] = { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 2000000 };
 #define BAUD_OPTIONS_COUNT 9
@@ -145,8 +145,10 @@ static void ui_refresh_status(void) {
     if (s->frequency_mhz != DEVICE_UNKNOWN) {
         wsprintfA(buf, "%d MHz", s->frequency_mhz);
         SetDlgItemTextA(g_hwnd, IDC_STAT_FREQ, buf);
+        SetDlgItemTextA(g_hwnd, IDC_OUTPUT_FREQ_LBL, buf);
     } else {
         SetDlgItemTextA(g_hwnd, IDC_STAT_FREQ, "-");
+        SetDlgItemTextA(g_hwnd, IDC_OUTPUT_FREQ_LBL, "-");
     }
     if (s->bandwidth_mhz != DEVICE_UNKNOWN) {
         wsprintfA(buf, "%d MHz", s->bandwidth_mhz);
@@ -161,7 +163,6 @@ static void ui_refresh_status(void) {
         SetDlgItemTextA(g_hwnd, IDC_STAT_POWER, "-");
     }
     SetDlgItemTextA(g_hwnd, IDC_STAT_MODE, mode_display_name(s->mode));
-    SetDlgItemTextA(g_hwnd, IDC_STAT_LASTCMD, s->last_command);
 
     SetDlgItemTextA(g_hwnd, IDC_OUTPUT_PILL, s->output_on ? "ON" : "OFF");
     CheckDlgButton(g_hwnd, IDC_OUTPUT_CHECK, s->output_on ? BST_CHECKED : BST_UNCHECKED);
@@ -340,7 +341,9 @@ static void build_controls(HWND hwnd) {
     /* --- Left column: Output --- */
     add_ctrl(hwnd, "BUTTON", "Output", BS_GROUPBOX, 10, 232, 335, 70, 0);
     add_ctrl(hwnd, "BUTTON", "Output ON", BS_AUTOCHECKBOX | WS_TABSTOP, 22, 254, 110, 20, IDC_OUTPUT_CHECK);
-    add_ctrl(hwnd, "STATIC", "OFF", SS_CENTER, 150, 254, 60, 20, IDC_OUTPUT_PILL);
+    add_ctrl(hwnd, "STATIC", "OFF", SS_CENTER, 150, 254, 50, 20, IDC_OUTPUT_PILL);
+    add_ctrl(hwnd, "STATIC", "Freq:", SS_LEFT, 210, 254, 34, 20, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 246, 254, 80, 20, IDC_OUTPUT_FREQ_LBL);
     /* left column bottom = 232 + 70 = 302 */
 
     /* --- Right column (x=355, w=335): Signal Settings --- */
@@ -375,7 +378,7 @@ static void build_controls(HWND hwnd) {
     /* right column bottom = 6 + 268 = 274 */
 
     /* --- Full width below both columns (below y=302, the taller of the two): Status --- */
-    add_ctrl(hwnd, "BUTTON", "Status", BS_GROUPBOX, 10, 310, 335, 156, 0);
+    add_ctrl(hwnd, "BUTTON", "Status", BS_GROUPBOX, 10, 310, 335, 96, 0);
     add_ctrl(hwnd, "STATIC", "Connection:", SS_LEFT, 22, 332, 68, 16, 0);
     add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 90, 332, 70, 16, IDC_STAT_CONN);
     add_ctrl(hwnd, "STATIC", "Output:", SS_LEFT, 182, 332, 44, 16, 0);
@@ -391,12 +394,6 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 182, 376, 38, 16, 0);
     add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 222, 376, 100, 16, IDC_STAT_MODE);
 
-    add_ctrl(hwnd, "STATIC", "Last Command:", SS_LEFT, 22, 398, 90, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 114, 398, 210, 16, IDC_STAT_LASTCMD);
-
-    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 22, 420, 300, 32, IDC_WARNING_LBL);
-    ShowWindow(GetDlgItem(hwnd, IDC_WARNING_LBL), SW_HIDE);
-
     /* --- TX / RX (same row as Status, right column) --- */
     add_ctrl(hwnd, "BUTTON", "TX / RX", BS_GROUPBOX, 355, 310, 335, 76, 0);
     add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 332, 26, 16, 0);
@@ -409,6 +406,12 @@ static void build_controls(HWND hwnd) {
         HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 354, 270, 20, IDC_RX_EDIT);
         if (rx) SendMessageA(rx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
+
+    /* Warning banner lives below both boxes (not inside Status) so it adds
+     * zero space to either box when hidden - it only claims a row when
+     * there's actually something to say. */
+    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 10, 414, 680, 32, IDC_WARNING_LBL);
+    ShowWindow(GetDlgItem(hwnd, IDC_WARNING_LBL), SW_HIDE);
 
     /* ---- populate lists ---- */
 
@@ -531,7 +534,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     break;
                 }
                 case IDC_OUTPUT_CHECK: {
+                    /* BS_AUTOCHECKBOX already flipped the visible check state
+                     * before this message arrives, so "checked" here is the
+                     * requested new state. */
                     bool checked = (IsDlgButtonChecked(hwnd, IDC_OUTPUT_CHECK) == BST_CHECKED);
+                    const char *prompt = checked ? "Turn device output ON?" : "Turn device output OFF?";
+                    if (MessageBoxA(hwnd, prompt, "Confirm", MB_YESNO | MB_ICONWARNING) != IDYES) {
+                        CheckDlgButton(hwnd, IDC_OUTPUT_CHECK, checked ? BST_UNCHECKED : BST_CHECKED);
+                        break;
+                    }
                     if (checked) device_turn_output_on(&g_device);
                     else device_turn_output_off(&g_device);
                     break;
