@@ -40,6 +40,4 @@
 #define IDC_TX_EDIT          1033
 #define IDC_RX_EDIT          1034
 
-#define IDC_ESTOP_BTN        1035
-
 #define ID_POLL_TIMER        1

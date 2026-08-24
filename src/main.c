@@ -12,7 +12,7 @@
 #include "device.h"
 
 #define CLIENT_WIDTH  700
-#define CLIENT_HEIGHT 650
+#define CLIENT_HEIGHT 480
 
 static const int BAUD_OPTIONS[] = { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 2000000 };
 #define BAUD_OPTIONS_COUNT 9
@@ -306,13 +306,6 @@ static void on_apply_clicked(void) {
     }
 }
 
-static void on_emergency_stop(void) {
-    if (MessageBoxA(g_hwnd, "Immediately turn off the device output?", "Emergency Stop",
-                     MB_YESNO | MB_ICONWARNING) == IDYES) {
-        device_turn_output_off(&g_device);
-    }
-}
-
 /* ---- layout ---- */
 
 static void build_controls(HWND hwnd) {
@@ -382,43 +375,40 @@ static void build_controls(HWND hwnd) {
     /* right column bottom = 6 + 268 = 274 */
 
     /* --- Full width below both columns (below y=302, the taller of the two): Status --- */
-    add_ctrl(hwnd, "BUTTON", "Status", BS_GROUPBOX, 10, 310, 680, 190, 0);
-    add_ctrl(hwnd, "STATIC", "Connection:", SS_LEFT, 22, 332, 74, 16, 0);
-    add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 100, 332, 140, 16, IDC_STAT_CONN);
-    add_ctrl(hwnd, "STATIC", "Output:", SS_LEFT, 380, 332, 50, 16, 0);
-    add_ctrl(hwnd, "STATIC", "OFF", SS_LEFT, 434, 332, 100, 16, IDC_STAT_OUTPUT);
+    add_ctrl(hwnd, "BUTTON", "Status", BS_GROUPBOX, 10, 310, 335, 156, 0);
+    add_ctrl(hwnd, "STATIC", "Connection:", SS_LEFT, 22, 332, 68, 16, 0);
+    add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 90, 332, 70, 16, IDC_STAT_CONN);
+    add_ctrl(hwnd, "STATIC", "Output:", SS_LEFT, 182, 332, 44, 16, 0);
+    add_ctrl(hwnd, "STATIC", "OFF", SS_LEFT, 228, 332, 60, 16, IDC_STAT_OUTPUT);
 
-    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 356, 74, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 100, 356, 140, 16, IDC_STAT_FREQ);
-    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 380, 356, 64, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 448, 356, 100, 16, IDC_STAT_BW);
+    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 354, 62, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 84, 354, 64, 16, IDC_STAT_FREQ);
+    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 182, 354, 60, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 244, 354, 72, 16, IDC_STAT_BW);
 
-    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 22, 380, 74, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 100, 380, 140, 16, IDC_STAT_POWER);
-    add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 380, 380, 50, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 434, 380, 180, 16, IDC_STAT_MODE);
+    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 22, 376, 44, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 66, 376, 60, 16, IDC_STAT_POWER);
+    add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 182, 376, 38, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 222, 376, 100, 16, IDC_STAT_MODE);
 
-    add_ctrl(hwnd, "STATIC", "Last Command:", SS_LEFT, 22, 404, 90, 16, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 114, 404, 560, 16, IDC_STAT_LASTCMD);
+    add_ctrl(hwnd, "STATIC", "Last Command:", SS_LEFT, 22, 398, 90, 16, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 114, 398, 210, 16, IDC_STAT_LASTCMD);
 
-    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 22, 428, 656, 60, IDC_WARNING_LBL);
+    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 22, 420, 300, 32, IDC_WARNING_LBL);
     ShowWindow(GetDlgItem(hwnd, IDC_WARNING_LBL), SW_HIDE);
 
-    /* --- TX / RX --- */
-    add_ctrl(hwnd, "BUTTON", "TX / RX", BS_GROUPBOX, 10, 508, 680, 86, 0);
-    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 22, 530, 26, 16, 0);
+    /* --- TX / RX (same row as Status, right column) --- */
+    add_ctrl(hwnd, "BUTTON", "TX / RX", BS_GROUPBOX, 355, 310, 335, 76, 0);
+    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 332, 26, 16, 0);
     {
-        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 52, 528, 610, 20, IDC_TX_EDIT);
+        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 330, 270, 20, IDC_TX_EDIT);
         if (tx) SendMessageA(tx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
-    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 22, 554, 26, 16, 0);
+    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 367, 356, 26, 16, 0);
     {
-        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 52, 552, 610, 20, IDC_RX_EDIT);
+        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 354, 270, 20, IDC_RX_EDIT);
         if (rx) SendMessageA(rx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
-
-    /* Emergency stop */
-    add_ctrl(hwnd, "BUTTON", "EMERGENCY STOP - OUTPUT OFF", BS_PUSHBUTTON | WS_TABSTOP, 10, 602, 680, 34, IDC_ESTOP_BTN);
 
     /* ---- populate lists ---- */
 
@@ -550,7 +540,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 case IDC_FREQ_PLUS_BTN: step_frequency(1); break;
                 case IDC_APPLY_BTN: on_apply_clicked(); break;
                 case IDC_READ_BTN: device_read_status(&g_device); break;
-                case IDC_ESTOP_BTN: on_emergency_stop(); break;
                 default: break;
             }
             return 0;
