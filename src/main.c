@@ -81,6 +81,12 @@ static HBRUSH g_brush_field;
 static HBRUSH g_brush_accent;
 static HBRUSH g_brush_accent_dis;
 
+/* Custom Proceed/Cancel confirm popup (see show_confirm_dialog) - state
+ * for the one dialog that can be open at a time. */
+static bool g_confirm_class_registered;
+static int g_confirm_result;
+static const char *g_confirm_message;
+
 static Connection g_conn;
 static Device g_device;
 
@@ -185,6 +191,134 @@ static void draw_dot_grid(HDC hdc, const RECT *rc) {
             FillRect(hdc, &dot, g_brush_dot);
         }
     }
+}
+
+/* ---- Proceed/Cancel confirm popup (replaces MessageBoxA's Yes/No for
+ * dialogs that need specific button wording) ---- */
+
+static LRESULT CALLBACK confirm_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_CREATE:
+            add_ctrl(hwnd, "STATIC", g_confirm_message, SS_LEFT | SS_NOPREFIX, 16, 16, 328, 50, 0);
+            add_ctrl(hwnd, "BUTTON", "Proceed", BS_OWNERDRAW | WS_TABSTOP, 95, 76, 90, 28, IDOK);
+            add_ctrl(hwnd, "BUTTON", "Cancel", BS_OWNERDRAW | WS_TABSTOP, 195, 76, 90, 28, IDCANCEL);
+            return 0;
+
+        case WM_DRAWITEM: {
+            DRAWITEMSTRUCT *dis = (DRAWITEMSTRUCT *)lParam;
+            if (dis->CtlType == ODT_BUTTON) {
+                char text[32];
+                RECT rc = dis->rcItem;
+                GetWindowTextA(dis->hwndItem, text, sizeof(text));
+                if (dis->CtlID == IDOK) {
+                    FillRect(dis->hDC, &rc, g_brush_accent);
+                    SetTextColor(dis->hDC, RGB(255, 255, 255));
+                } else {
+                    HPEN pen = CreatePen(PS_SOLID, 1, COLOR_APP_PANEL_BORDER);
+                    HPEN old_pen = (HPEN)SelectObject(dis->hDC, pen);
+                    HBRUSH old_brush = (HBRUSH)SelectObject(dis->hDC, g_brush_panel);
+                    Rectangle(dis->hDC, rc.left, rc.top, rc.right, rc.bottom);
+                    SelectObject(dis->hDC, old_brush);
+                    SelectObject(dis->hDC, old_pen);
+                    DeleteObject(pen);
+                    SetTextColor(dis->hDC, COLOR_APP_TEXT);
+                }
+                SetBkMode(dis->hDC, TRANSPARENT);
+                DrawTextA(dis->hDC, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                if (dis->itemState & ODS_FOCUS) {
+                    RECT focus_rc = rc;
+                    InflateRect(&focus_rc, -3, -3);
+                    DrawFocusRect(dis->hDC, &focus_rc);
+                }
+                return TRUE;
+            }
+            break;
+        }
+
+        case WM_CTLCOLORSTATIC: {
+            HDC hdc = (HDC)wParam;
+            SetTextColor(hdc, COLOR_APP_TEXT);
+            SetBkMode(hdc, TRANSPARENT);
+            return (LRESULT)g_brush_page;
+        }
+
+        case WM_COMMAND:
+            if (HIWORD(wParam) == BN_CLICKED) {
+                if (LOWORD(wParam) == IDOK) {
+                    g_confirm_result = 1;
+                    DestroyWindow(hwnd);
+                } else if (LOWORD(wParam) == IDCANCEL) {
+                    g_confirm_result = 0;
+                    DestroyWindow(hwnd);
+                }
+            }
+            return 0;
+
+        case WM_CLOSE:
+            g_confirm_result = 0;
+            DestroyWindow(hwnd);
+            return 0;
+    }
+    return DefWindowProcA(hwnd, msg, wParam, lParam);
+}
+
+/* Modal Proceed/Cancel popup with app-styled buttons, for confirmations
+ * that need specific wording MessageBoxA's fixed button sets can't give
+ * (Yes/No, OK/Cancel, ...). Blocks (via its own message loop) until
+ * answered; returns true only if Proceed was clicked. */
+static bool show_confirm_dialog(HWND parent, const char *message) {
+    RECT prc, wrc;
+    HWND popup;
+    MSG msg;
+    DWORD style = WS_POPUP | WS_CAPTION | WS_SYSMENU;
+    DWORD ex_style = WS_EX_DLGMODALFRAME;
+    int x, y;
+
+    if (!g_confirm_class_registered) {
+        WNDCLASSEXA wc;
+        memset(&wc, 0, sizeof(wc));
+        wc.cbSize = sizeof(wc);
+        wc.lpfnWndProc = confirm_wnd_proc;
+        wc.hInstance = g_hinst;
+        wc.hCursor = LoadCursorA(NULL, IDC_ARROW);
+        wc.hbrBackground = g_brush_page;
+        wc.lpszClassName = "TxLiteConfirmDialog";
+        RegisterClassExA(&wc);
+        g_confirm_class_registered = true;
+    }
+
+    /* wrc starts as the desired CLIENT rect (360x160, matching the child
+     * control layout in WM_CREATE) and grows to the required window rect
+     * so the title bar/border don't eat into that client area. */
+    wrc.left = 0;
+    wrc.top = 0;
+    wrc.right = 360;
+    wrc.bottom = 130;
+    AdjustWindowRectEx(&wrc, style, FALSE, ex_style);
+
+    GetWindowRect(parent, &prc);
+    x = prc.left + ((prc.right - prc.left) - (wrc.right - wrc.left)) / 2;
+    y = prc.top + ((prc.bottom - prc.top) - (wrc.bottom - wrc.top)) / 2;
+
+    g_confirm_result = 0;
+    g_confirm_message = message;
+
+    EnableWindow(parent, FALSE);
+    popup = CreateWindowExA(ex_style, "TxLiteConfirmDialog", "Confirm", style,
+                             x, y, wrc.right - wrc.left, wrc.bottom - wrc.top,
+                             parent, NULL, g_hinst, NULL);
+    if (popup) {
+        ShowWindow(popup, SW_SHOW);
+        while (IsWindow(popup) && GetMessageA(&msg, NULL, 0, 0)) {
+            if (!IsDialogMessageA(popup, &msg)) {
+                TranslateMessage(&msg);
+                DispatchMessageA(&msg);
+            }
+        }
+    }
+    EnableWindow(parent, TRUE);
+    SetForegroundWindow(parent);
+    return g_confirm_result == 1;
 }
 
 /* ---- device/connection -> UI callbacks (single global window, so these
@@ -708,10 +842,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     break;
                 }
                 case IDC_FREQ_APPLY_BTN: {
-                    if (MessageBoxA(hwnd,
-                                     "WARNING: Incorrect frequency settings can damage "
-                                     "your RF Amplifier.",
-                                     "Confirm", MB_YESNO | MB_ICONWARNING) == IDYES) {
+                    if (show_confirm_dialog(hwnd,
+                                             "WARNING: Incorrect frequency settings can "
+                                             "damage your RF Amplifier.")) {
                         on_apply_clicked();
                     }
                     break;
