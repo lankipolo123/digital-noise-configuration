@@ -40,15 +40,20 @@ static const int STEP_OPTIONS[] = { 1, 10, 50, 100 };
 
 #define DEFAULT_FREQUENCY_MHZ 2450
 
-/* MILITRONIX palette: white page, light cool-gray section panels, charcoal
- * text, flat blue accent on buttons/headers - matching the logo's flat
- * geometric look (solid fills, no gradients, no theming). */
-#define COLOR_APP_PAGE_BG   RGB(255, 255, 255)
-#define COLOR_APP_PANEL_BG  RGB(237, 241, 242)
-#define COLOR_APP_TEXT      RGB(64, 64, 66)
-#define COLOR_APP_ACCENT    RGB(13, 110, 158)
-#define COLOR_APP_ACCENT_DIS RGB(180, 195, 205)
-#define COLOR_APP_FIELD_BG  RGB(255, 255, 255)
+/* MILITRONIX Dark palette: the real brand colors (charcoal + the logo's
+ * blue) in dark shades - dark charcoal page/panels, light text, the same
+ * blue family on buttons, a brighter blue for panel titles so they pop
+ * against the dark fill. Flat fills only, no gradients, no theming. */
+#define COLOR_APP_PAGE_BG   RGB(32, 33, 36)
+#define COLOR_APP_PANEL_BG  RGB(43, 45, 49)
+#define COLOR_APP_TEXT      RGB(232, 233, 234)
+#define COLOR_APP_MUTED     RGB(154, 156, 160)
+#define COLOR_APP_ACCENT    RGB(26, 133, 184)
+#define COLOR_APP_ACCENT_DIS RGB(58, 74, 82)
+#define COLOR_APP_HEADER    RGB(58, 168, 221)
+#define COLOR_APP_FIELD_BG  RGB(23, 24, 26)
+#define COLOR_APP_CONNECTED RGB(58, 181, 94)
+#define COLOR_APP_DISCONNECTED RGB(224, 90, 90)
 
 static HINSTANCE g_hinst;
 static HWND g_hwnd;
@@ -611,12 +616,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             HWND ctl = (HWND)lParam;
             HDC hdc = (HDC)wParam;
             if (ctl == GetDlgItem(hwnd, IDC_CONN_STATUS_LBL)) {
-                SetTextColor(hdc, g_device.state.connected ? RGB(8, 127, 35) : RGB(176, 0, 32));
+                SetTextColor(hdc, g_device.state.connected ? COLOR_APP_CONNECTED : COLOR_APP_DISCONNECTED);
                 SetBkMode(hdc, TRANSPARENT);
                 return (LRESULT)g_brush_panel;
             }
             if (ctl == GetDlgItem(hwnd, IDC_OUTPUT_PILL)) {
-                SetTextColor(hdc, g_device.state.output_on ? COLOR_APP_ACCENT : RGB(100, 100, 100));
+                SetTextColor(hdc, g_device.state.output_on ? COLOR_APP_ACCENT : COLOR_APP_MUTED);
                 SetBkMode(hdc, TRANSPARENT);
                 return (LRESULT)g_brush_panel;
             }
@@ -634,7 +639,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
              * other plain label, including the empty-text panel rectangles
              * from add_panel(), is charcoal text on the panel fill. */
             if ((HFONT)SendMessageA(ctl, WM_GETFONT, 0, 0) == g_header_font) {
-                SetTextColor(hdc, COLOR_APP_ACCENT);
+                SetTextColor(hdc, COLOR_APP_HEADER);
             } else {
                 SetTextColor(hdc, COLOR_APP_TEXT);
             }
