@@ -683,8 +683,13 @@ static void build_controls(HWND hwnd) {
     EnableWindow(GetDlgItem(hwnd, IDC_FREQ_PLUS_BTN), FALSE);
 
     /* --- Right column continues: TX / RX (below Signal Settings at
-     * y=210, its own column's actual bottom - not the left column's) --- */
-    add_panel(hwnd, 355, 218, 335, 84);
+     * y=210, its own column's actual bottom - not the left column's).
+     * Height stretched to 110 (vs. the tight-content 84) so this panel's
+     * bottom lands on the same y as the left column's Frequency panel -
+     * otherwise the empty space below it (down to the reserved warning-
+     * banner row) reads as a big dead zone rather than padding inside
+     * a bordered box. --- */
+    add_panel(hwnd, 355, 218, 335, 110);
     add_header(hwnd, "TX / RX", 367, 226, 300, 18);
     add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 248, 26, 16, 0);
     {
@@ -696,7 +701,7 @@ static void build_controls(HWND hwnd) {
         HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 270, 270, 20, IDC_RX_EDIT);
         if (rx) SendMessageA(rx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
-    /* left column bottom = 244 + 84 = 328; right column bottom = 218 + 84 = 302 */
+    /* left column bottom = 244 + 84 = 328; right column bottom = 218 + 110 = 328 */
 
     /* Warning banner lives below both columns, on the page rather than
      * inside any panel, so it adds zero space when hidden - it only
