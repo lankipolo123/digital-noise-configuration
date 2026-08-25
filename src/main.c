@@ -84,6 +84,12 @@ static HBRUSH g_brush_accent_dis;
 static HBRUSH g_brush_silver;
 static HBRUSH g_brush_light;
 
+/* Raw bytes behind the TX/RX hex-box readouts (see add_hexbox). */
+static uint8_t g_tx_bytes[16];
+static int g_tx_len;
+static uint8_t g_rx_bytes[64];
+static int g_rx_len;
+
 /* Custom Proceed/Cancel confirm popup (see show_confirm_dialog) - state
  * for the one dialog that can be open at a time. */
 static bool g_confirm_class_registered;
@@ -233,6 +239,83 @@ static void draw_dot_grid(HDC hdc, const RECT *rc) {
     }
 }
 
+/* Hex-box readout: each byte gets its own bordered box (light grey fill,
+ * dark border, dark mono text) instead of one flat text string - a
+ * segmented look like a row of cells rather than a plain input line.
+ * Used for TX/RX; the control's id picks which byte buffer to draw
+ * (g_tx_bytes/g_tx_len or g_rx_bytes/g_rx_len). */
+#define HEXBOX_W 24
+#define HEXBOX_GAP 3
+static LRESULT CALLBACK hexbox_subclass_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_ERASEBKGND) {
+        return 1;
+    }
+    if (msg == WM_PAINT) {
+        PAINTSTRUCT ps;
+        HDC hdc;
+        RECT rc;
+        HFONT old_font;
+        HPEN border_pen, old_pen;
+        HBRUSH old_brush;
+        const uint8_t *data;
+        int len, i, x, id;
+
+        hdc = BeginPaint(hwnd, &ps);
+        GetClientRect(hwnd, &rc);
+        FillRect(hdc, &rc, g_brush_panel);
+
+        id = GetDlgCtrlID(hwnd);
+        if (id == IDC_TX_EDIT) {
+            data = g_tx_bytes;
+            len = g_tx_len;
+        } else {
+            data = g_rx_bytes;
+            len = g_rx_len;
+        }
+
+        old_font = (HFONT)SelectObject(hdc, g_mono_font);
+        border_pen = CreatePen(PS_SOLID, 1, RGB(150, 152, 156));
+        old_pen = (HPEN)SelectObject(hdc, border_pen);
+        old_brush = (HBRUSH)SelectObject(hdc, g_brush_light);
+        SetTextColor(hdc, RGB(30, 31, 33));
+        SetBkMode(hdc, TRANSPARENT);
+
+        x = rc.left;
+        for (i = 0; i < len && x + HEXBOX_W <= rc.right; i++) {
+            char text[4];
+            RECT box;
+            box.left = x;
+            box.top = rc.top;
+            box.right = x + HEXBOX_W;
+            box.bottom = rc.bottom;
+            Rectangle(hdc, box.left, box.top, box.right, box.bottom);
+            wsprintfA(text, "%02X", data[i]);
+            DrawTextA(hdc, text, -1, &box, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            x += HEXBOX_W + HEXBOX_GAP;
+        }
+
+        SelectObject(hdc, old_brush);
+        SelectObject(hdc, old_pen);
+        DeleteObject(border_pen);
+        SelectObject(hdc, old_font);
+
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    return CallWindowProcA(g_panel_orig_proc, hwnd, msg, wParam, lParam);
+}
+
+static HWND add_hexbox(HWND parent, int x, int y, int w, int h, int id) {
+    HWND ctrl = add_ctrl(parent, "STATIC", NULL, SS_LEFT, x, y, w, h, id);
+    if (ctrl) {
+        if (!g_panel_orig_proc) {
+            g_panel_orig_proc = (WNDPROC)GetWindowLongPtrA(ctrl, GWLP_WNDPROC);
+        }
+        SetWindowLongPtrA(ctrl, GWLP_WNDPROC, (LONG_PTR)hexbox_subclass_proc);
+    }
+    return ctrl;
+}
+
 /* ---- Proceed/Cancel confirm popup (replaces MessageBoxA's Yes/No for
  * dialogs that need specific button wording) ---- */
 
@@ -377,26 +460,20 @@ static void conn_on_frame(const ProtoParsedFrame *frame, void *ctx) {
 }
 
 static void conn_on_raw_tx(const uint8_t *data, uint8_t len, void *ctx) {
-    char buf[128];
-    int pos = 0, i;
+    int n = (len > (int)sizeof(g_tx_bytes)) ? (int)sizeof(g_tx_bytes) : (int)len;
     (void)ctx;
-    for (i = 0; i < len && pos < (int)sizeof(buf) - 6; i++) {
-        pos += wsprintfA(buf + pos, "%02X | ", data[i]);
-    }
-    buf[pos] = '\0';
-    SetDlgItemTextA(g_hwnd, IDC_TX_EDIT, buf);
+    memcpy(g_tx_bytes, data, (size_t)n);
+    g_tx_len = n;
+    InvalidateRect(GetDlgItem(g_hwnd, IDC_TX_EDIT), NULL, TRUE);
 }
 
 static void conn_on_raw_rx(const uint8_t *data, uint16_t len, void *ctx) {
-    char buf[340];
-    int pos = 0, i;
-    int n = (len > 64) ? 64 : (int)len; /* real frames are tiny; this just bounds a garbage burst */
+    /* real frames are tiny; this just bounds a garbage burst */
+    int n = (len > (int)sizeof(g_rx_bytes)) ? (int)sizeof(g_rx_bytes) : (int)len;
     (void)ctx;
-    for (i = 0; i < n && pos < (int)sizeof(buf) - 6; i++) {
-        pos += wsprintfA(buf + pos, "%02X | ", data[i]);
-    }
-    buf[pos] = '\0';
-    SetDlgItemTextA(g_hwnd, IDC_RX_EDIT, buf);
+    memcpy(g_rx_bytes, data, (size_t)n);
+    g_rx_len = n;
+    InvalidateRect(GetDlgItem(g_hwnd, IDC_RX_EDIT), NULL, TRUE);
 }
 
 static void conn_on_error(const char *message, void *ctx) {
@@ -693,15 +770,9 @@ static void build_controls(HWND hwnd) {
     add_panel(hwnd, 355, 218, 335, 110);
     add_header(hwnd, "TX / RX", 367, 226, 300, 18);
     add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 248, 26, 16, 0);
-    {
-        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 246, 270, 20, IDC_TX_EDIT);
-        if (tx) SendMessageA(tx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
-    }
+    add_hexbox(hwnd, 393, 246, 270, 22, IDC_TX_EDIT);
     add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 367, 272, 26, 16, 0);
-    {
-        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 270, 270, 20, IDC_RX_EDIT);
-        if (rx) SendMessageA(rx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
-    }
+    add_hexbox(hwnd, 393, 270, 270, 22, IDC_RX_EDIT);
     /* left column bottom = 244 + 84 = 328; right column bottom = 218 + 110 = 328 */
 
     /* Warning banner lives below both columns, on the page rather than
@@ -923,15 +994,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 SetTextColor(hdc, RGB(146, 64, 14));
                 SetBkColor(hdc, RGB(254, 243, 199));
                 return (LRESULT)g_brush_warn;
-            }
-            /* TX/RX are ES_READONLY, so they land here rather than
-             * WM_CTLCOLOREDIT - a light grey field reads more like a
-             * terminal/log readout against the dark theme. */
-            if (ctl == GetDlgItem(hwnd, IDC_TX_EDIT) || ctl == GetDlgItem(hwnd, IDC_RX_EDIT)) {
-                SetTextColor(hdc, RGB(30, 31, 33));
-                SetBkColor(hdc, RGB(230, 231, 233));
-                SetBkMode(hdc, OPAQUE);
-                return (LRESULT)g_brush_light;
             }
             /* Section title labels use the bold header font - recognized
              * here (rather than by id) so add_header() is the only place
