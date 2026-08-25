@@ -30,6 +30,7 @@
 #define IDC_STEP_COMBO       1028
 #define IDC_BW_COMBO         1029
 #define IDC_POWER_COMBO      1030
+#define IDC_APPLY_BTN        1031
 #define IDC_READ_BTN         1032
 
 #define IDC_TX_EDIT          1033

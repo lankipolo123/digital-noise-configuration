@@ -608,10 +608,12 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 367, 152, 50, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 421, 150, 110, 100, IDC_POWER_COMBO);
 
-    /* Applying now happens from the Frequency panel's own Apply button
-     * (it sends this same mode/freq/bandwidth/power frame) - no separate
-     * Apply here avoids two buttons doing the identical thing. */
-    add_ctrl(hwnd, "BUTTON", "Read Device", BS_OWNERDRAW | WS_TABSTOP, 367, 174, 100, 26, IDC_READ_BTN);
+    /* Apply here and the Frequency panel's Apply both send the same
+     * combined mode/freq/bandwidth/power frame - having it in both
+     * panels means whichever field you just changed, Apply is right
+     * there rather than requiring a trip to the other panel. */
+    add_ctrl(hwnd, "BUTTON", "Apply", BS_OWNERDRAW | WS_TABSTOP, 367, 174, 80, 26, IDC_APPLY_BTN);
+    add_ctrl(hwnd, "BUTTON", "Read Device", BS_OWNERDRAW | WS_TABSTOP, 453, 174, 100, 26, IDC_READ_BTN);
     /* right column bottom = 6 + 204 = 210 */
 
     /* --- Left column continues: Frequency (below Address & Output at
@@ -841,6 +843,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     EnableWindow(GetDlgItem(hwnd, IDC_FREQ_PLUS_BTN), !locked);
                     break;
                 }
+                case IDC_APPLY_BTN:
                 case IDC_FREQ_APPLY_BTN: {
                     if (show_confirm_dialog(hwnd,
                                              "WARNING: Incorrect frequency settings can "
