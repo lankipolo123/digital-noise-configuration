@@ -56,6 +56,7 @@ static const int STEP_OPTIONS[] = { 1, 10, 50, 100 };
 #define COLOR_APP_DISCONNECTED RGB(224, 90, 90)
 #define COLOR_APP_DOT       RGB(50, 52, 57)
 #define COLOR_APP_PANEL_BORDER RGB(63, 66, 71)
+#define COLOR_APP_SILVER    RGB(176, 180, 186)
 
 /* Chamfered-corner panels: how much to cut off each corner. */
 #define PANEL_CHAMFER 10
@@ -80,6 +81,7 @@ static HBRUSH g_brush_page;
 static HBRUSH g_brush_field;
 static HBRUSH g_brush_accent;
 static HBRUSH g_brush_accent_dis;
+static HBRUSH g_brush_silver;
 
 /* Custom Proceed/Cancel confirm popup (see show_confirm_dialog) - state
  * for the one dialog that can be open at a time. */
@@ -122,8 +124,9 @@ static LRESULT CALLBACK panel_subclass_proc(HWND hwnd, UINT msg, WPARAM wParam, 
         HDC hdc;
         RECT rc;
         POINT pts[8];
+        POINT tri[3];
         HBRUSH old_brush;
-        HPEN pen, old_pen;
+        HPEN pen, old_pen, silver_pen, old_silver_pen;
         int c = PANEL_CHAMFER;
 
         hdc = BeginPaint(hwnd, &ps);
@@ -146,6 +149,36 @@ static LRESULT CALLBACK panel_subclass_proc(HWND hwnd, UINT msg, WPARAM wParam, 
 
         SelectObject(hdc, old_pen);
         DeleteObject(pen);
+
+        /* Fill each chamfered corner's cut-off triangle with silver,
+         * instead of leaving it as bare page background - a small metal
+         * corner-bracket accent at all four corners. */
+        silver_pen = CreatePen(PS_SOLID, 1, COLOR_APP_SILVER);
+        old_silver_pen = (HPEN)SelectObject(hdc, silver_pen);
+        SelectObject(hdc, g_brush_silver);
+
+        tri[0].x = rc.left;       tri[0].y = rc.top;
+        tri[1].x = rc.left + c;   tri[1].y = rc.top;
+        tri[2].x = rc.left;       tri[2].y = rc.top + c;
+        Polygon(hdc, tri, 3);
+
+        tri[0].x = rc.right - 1;      tri[0].y = rc.top;
+        tri[1].x = rc.right - 1 - c;  tri[1].y = rc.top;
+        tri[2].x = rc.right - 1;      tri[2].y = rc.top + c;
+        Polygon(hdc, tri, 3);
+
+        tri[0].x = rc.right - 1;      tri[0].y = rc.bottom - 1;
+        tri[1].x = rc.right - 1 - c;  tri[1].y = rc.bottom - 1;
+        tri[2].x = rc.right - 1;      tri[2].y = rc.bottom - 1 - c;
+        Polygon(hdc, tri, 3);
+
+        tri[0].x = rc.left;       tri[0].y = rc.bottom - 1;
+        tri[1].x = rc.left + c;   tri[1].y = rc.bottom - 1;
+        tri[2].x = rc.left;       tri[2].y = rc.bottom - 1 - c;
+        Polygon(hdc, tri, 3);
+
+        SelectObject(hdc, old_silver_pen);
+        DeleteObject(silver_pen);
         SelectObject(hdc, old_brush);
 
         EndPaint(hwnd, &ps);
@@ -962,6 +995,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (g_brush_dot) {
                 DeleteObject(g_brush_dot);
             }
+            if (g_brush_silver) {
+                DeleteObject(g_brush_silver);
+            }
             if (g_mono_font && g_mono_font != g_font) {
                 DeleteObject(g_mono_font);
             }
@@ -996,6 +1032,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     g_brush_accent = CreateSolidBrush(COLOR_APP_ACCENT);
     g_brush_accent_dis = CreateSolidBrush(COLOR_APP_ACCENT_DIS);
     g_brush_dot = CreateSolidBrush(COLOR_APP_DOT);
+    g_brush_silver = CreateSolidBrush(COLOR_APP_SILVER);
 
     memset(&wc, 0, sizeof(wc));
     wc.cbSize = sizeof(wc);
