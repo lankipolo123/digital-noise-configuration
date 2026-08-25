@@ -225,6 +225,102 @@ static HWND add_header(HWND parent, LPCSTR text, int x, int y, int w, int h) {
     return ctrl;
 }
 
+/* Small thin-line icons next to each panel title - plain GDI shapes
+ * (lines/rectangles only, no arcs, to keep them unambiguous to draw and
+ * cheap in code size), stroked in the header accent color. */
+#define ICON_PLUG      0 /* Connection & Settings */
+#define ICON_BARS      1 /* Address & Output */
+#define ICON_WAVE      2 /* Frequency */
+#define ICON_SLIDERS   3 /* Signal Settings */
+#define ICON_ARROWS    4 /* TX / RX */
+
+static void draw_header_icon(HDC hdc, int x, int y, int type) {
+    switch (type) {
+        case ICON_PLUG:
+            Rectangle(hdc, x + 3, y + 6, x + 11, y + 13);
+            MoveToEx(hdc, x + 5, y + 6, NULL); LineTo(hdc, x + 5, y + 2);
+            MoveToEx(hdc, x + 9, y + 6, NULL); LineTo(hdc, x + 9, y + 2);
+            break;
+        case ICON_BARS:
+            Rectangle(hdc, x + 2, y + 9, x + 5, y + 13);
+            Rectangle(hdc, x + 6, y + 6, x + 9, y + 13);
+            Rectangle(hdc, x + 10, y + 2, x + 13, y + 13);
+            break;
+        case ICON_WAVE: {
+            POINT pts[6];
+            pts[0].x = x + 1;  pts[0].y = y + 7;
+            pts[1].x = x + 4;  pts[1].y = y + 2;
+            pts[2].x = x + 7;  pts[2].y = y + 12;
+            pts[3].x = x + 10; pts[3].y = y + 2;
+            pts[4].x = x + 13; pts[4].y = y + 12;
+            pts[5].x = x + 13; pts[5].y = y + 7;
+            Polyline(hdc, pts, 5);
+            break;
+        }
+        case ICON_SLIDERS:
+            MoveToEx(hdc, x + 2, y + 3, NULL);  LineTo(hdc, x + 13, y + 3);
+            Rectangle(hdc, x + 6, y + 2, x + 8, y + 5);
+            MoveToEx(hdc, x + 2, y + 7, NULL);  LineTo(hdc, x + 13, y + 7);
+            Rectangle(hdc, x + 3, y + 6, x + 5, y + 9);
+            MoveToEx(hdc, x + 2, y + 11, NULL); LineTo(hdc, x + 13, y + 11);
+            Rectangle(hdc, x + 9, y + 10, x + 11, y + 13);
+            break;
+        case ICON_ARROWS:
+            MoveToEx(hdc, x + 4, y + 12, NULL); LineTo(hdc, x + 4, y + 2);
+            MoveToEx(hdc, x + 2, y + 5, NULL);  LineTo(hdc, x + 4, y + 2); LineTo(hdc, x + 6, y + 5);
+            MoveToEx(hdc, x + 10, y + 2, NULL); LineTo(hdc, x + 10, y + 12);
+            MoveToEx(hdc, x + 8, y + 9, NULL);  LineTo(hdc, x + 10, y + 12); LineTo(hdc, x + 12, y + 9);
+            break;
+        default:
+            break;
+    }
+}
+
+static LRESULT CALLBACK icon_subclass_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_ERASEBKGND) {
+        return 1;
+    }
+    if (msg == WM_PAINT) {
+        PAINTSTRUCT ps;
+        HDC hdc;
+        RECT rc;
+        HPEN pen, old_pen;
+        HBRUSH old_brush;
+        int type;
+
+        hdc = BeginPaint(hwnd, &ps);
+        GetClientRect(hwnd, &rc);
+        FillRect(hdc, &rc, g_brush_panel);
+
+        type = (int)GetWindowLongPtrA(hwnd, GWLP_USERDATA);
+        pen = CreatePen(PS_SOLID, 1, COLOR_APP_HEADER);
+        old_pen = (HPEN)SelectObject(hdc, pen);
+        old_brush = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+
+        draw_header_icon(hdc, rc.left, rc.top, type);
+
+        SelectObject(hdc, old_brush);
+        SelectObject(hdc, old_pen);
+        DeleteObject(pen);
+
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    return CallWindowProcA(g_panel_orig_proc, hwnd, msg, wParam, lParam);
+}
+
+static HWND add_header_icon(HWND parent, int x, int y, int type) {
+    HWND ctrl = add_ctrl(parent, "STATIC", NULL, SS_LEFT, x, y, 14, 14, 0);
+    if (ctrl) {
+        if (!g_panel_orig_proc) {
+            g_panel_orig_proc = (WNDPROC)GetWindowLongPtrA(ctrl, GWLP_WNDPROC);
+        }
+        SetWindowLongPtrA(ctrl, GWLP_USERDATA, (LONG_PTR)type);
+        SetWindowLongPtrA(ctrl, GWLP_WNDPROC, (LONG_PTR)icon_subclass_proc);
+    }
+    return ctrl;
+}
+
 static void draw_dot_grid(HDC hdc, const RECT *rc) {
     int x, y;
     for (y = DOT_GRID_SPACING / 2; y < rc->bottom; y += DOT_GRID_SPACING) {
@@ -676,7 +772,8 @@ static void build_controls(HWND hwnd) {
      * conceptual section). Row pitch is tightened to 24px throughout so
      * there's no wasted space inside either panel. --- */
     add_panel(hwnd, 10, 6, 335, 138);
-    add_header(hwnd, "Connection && Settings", 22, 14, 300, 18);
+    add_header_icon(hwnd, 22, 14, ICON_PLUG);
+    add_header(hwnd, "Connection && Settings", 42, 14, 280, 18);
     add_ctrl(hwnd, "STATIC", "Port:", SS_LEFT, 22, 36, 32, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 34, 112, 160, IDC_PORT_COMBO);
     add_ctrl(hwnd, "BUTTON", "Refresh", BS_OWNERDRAW | WS_TABSTOP, 174, 34, 56, 22, IDC_REFRESH_BTN);
@@ -694,7 +791,8 @@ static void build_controls(HWND hwnd) {
     /* --- Left column: Module Address & Output (its own panel, combined
      * with each other but not with Connection & Settings or Power) --- */
     add_panel(hwnd, 10, 152, 335, 84);
-    add_header(hwnd, "Address && Output", 22, 160, 300, 18);
+    add_header_icon(hwnd, 22, 160, ICON_BARS);
+    add_header(hwnd, "Address && Output", 42, 160, 280, 18);
     add_ctrl(hwnd, "STATIC", "Address:", SS_LEFT, 22, 182, 52, 16, 0);
     add_ctrl(hwnd, "EDIT", "0", WS_BORDER | ES_NUMBER, 76, 180, 50, 20, IDC_ADDR_EDIT);
     add_ctrl(hwnd, "BUTTON", "Query", BS_OWNERDRAW | WS_TABSTOP, 132, 180, 60, 22, IDC_QUERY_ADDR_BTN);
@@ -708,7 +806,8 @@ static void build_controls(HWND hwnd) {
     /* --- Right column (x=355, w=335): Signal Settings (mode/bandwidth/power only -
      * frequency lives in its own panel below, where it's actually editable) --- */
     add_panel(hwnd, 355, 6, 335, 204);
-    add_header(hwnd, "Signal Settings", 367, 14, 300, 18);
+    add_header_icon(hwnd, 367, 14, ICON_SLIDERS);
+    add_header(hwnd, "Signal Settings", 387, 14, 280, 18);
     add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 367, 36, 270, 16, 0);
     /* Native radio buttons (BS_AUTORADIOBUTTON) - the system draws the
      * glyph and handles the group check-state itself; WM_CTLCOLORBTN
@@ -737,7 +836,8 @@ static void build_controls(HWND hwnd) {
      * y=244) - each column flows on its own, so no panel ever sits behind
      * a gap sized for the other one. --- */
     add_panel(hwnd, 10, 244, 335, 84);
-    add_header(hwnd, "Frequency", 22, 252, 300, 18);
+    add_header_icon(hwnd, 22, 252, ICON_WAVE);
+    add_header(hwnd, "Frequency", 42, 252, 280, 18);
     add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 274, 64, 16, 0);
     {
         char freq_label[8];
@@ -768,7 +868,8 @@ static void build_controls(HWND hwnd) {
      * banner row) reads as a big dead zone rather than padding inside
      * a bordered box. --- */
     add_panel(hwnd, 355, 218, 335, 110);
-    add_header(hwnd, "TX / RX", 367, 226, 300, 18);
+    add_header_icon(hwnd, 367, 226, ICON_ARROWS);
+    add_header(hwnd, "TX / RX", 387, 226, 280, 18);
     add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 248, 26, 16, 0);
     add_hexbox(hwnd, 393, 246, 270, 22, IDC_TX_EDIT);
     add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 367, 272, 26, 16, 0);
