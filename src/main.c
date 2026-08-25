@@ -961,7 +961,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 }
                 case IDC_APPLY_BTN:
                 case IDC_FREQ_APPLY_BTN: {
-                    if (show_confirm_dialog(hwnd,
+                    /* The hardware-damage risk is specifically about
+                     * frequency, so only gate on it when frequency is
+                     * actually unlocked (in play) - applying a Mode/
+                     * Bandwidth/Power-only change with frequency still
+                     * locked doesn't need a frequency warning. */
+                    bool freq_locked = (IsDlgButtonChecked(hwnd, IDC_FREQ_LOCK_CHECK) == BST_CHECKED);
+                    if (freq_locked || show_confirm_dialog(hwnd,
                                              "WARNING: Incorrect frequency settings can "
                                              "damage your RF Amplifier.")) {
                         on_apply_clicked();
