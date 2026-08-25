@@ -12,7 +12,7 @@
 #include "device.h"
 
 #define CLIENT_WIDTH  700
-#define CLIENT_HEIGHT 380
+#define CLIENT_HEIGHT 396
 
 static const int BAUD_OPTIONS[] = { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 2000000 };
 #define BAUD_OPTIONS_COUNT 9
@@ -40,10 +40,11 @@ static const int STEP_OPTIONS[] = { 1, 10, 50, 100 };
 
 #define DEFAULT_FREQUENCY_MHZ 2450
 
-/* MILITRONIX palette: light cool-gray chrome, charcoal text, flat blue
- * accent on buttons - matching the logo's flat geometric look (solid
- * fills, no gradients, no theming). */
-#define COLOR_APP_BG        RGB(237, 241, 242)
+/* MILITRONIX palette: white page, light cool-gray section panels, charcoal
+ * text, flat blue accent on buttons/headers - matching the logo's flat
+ * geometric look (solid fills, no gradients, no theming). */
+#define COLOR_APP_PAGE_BG   RGB(255, 255, 255)
+#define COLOR_APP_PANEL_BG  RGB(237, 241, 242)
 #define COLOR_APP_TEXT      RGB(64, 64, 66)
 #define COLOR_APP_ACCENT    RGB(13, 110, 158)
 #define COLOR_APP_ACCENT_DIS RGB(180, 195, 205)
@@ -53,8 +54,10 @@ static HINSTANCE g_hinst;
 static HWND g_hwnd;
 static HFONT g_font;
 static HFONT g_mono_font;
+static HFONT g_header_font;
 static HBRUSH g_brush_warn;
-static HBRUSH g_brush_bg;
+static HBRUSH g_brush_panel;
+static HBRUSH g_brush_page;
 static HBRUSH g_brush_field;
 static HBRUSH g_brush_accent;
 static HBRUSH g_brush_accent_dis;
@@ -75,6 +78,24 @@ static HWND add_ctrl(HWND parent, LPCSTR cls, LPCSTR text, DWORD style, int x, i
                                  x, y, w, h, parent, (HMENU)(INT_PTR)id, g_hinst, NULL);
     if (ctrl) {
         SendMessageA(ctrl, WM_SETFONT, (WPARAM)g_font, (LPARAM)TRUE);
+    }
+    return ctrl;
+}
+
+/* A section "panel": a plain bordered rectangle with no built-in caption,
+ * filled by the WM_CTLCOLORSTATIC default case (panel gray) - the text
+ * title is a separate add_header() label placed inside it, so the design
+ * isn't tied to the classic BS_GROUPBOX notched-border look. */
+static HWND add_panel(HWND parent, int x, int y, int w, int h) {
+    return add_ctrl(parent, "STATIC", NULL, WS_BORDER | SS_LEFT, x, y, w, h, 0);
+}
+
+/* Section title text, drawn inside the panel using the bold header font;
+ * WM_CTLCOLORSTATIC recognizes that font and colors it with the accent. */
+static HWND add_header(HWND parent, LPCSTR text, int x, int y, int w, int h) {
+    HWND ctrl = add_ctrl(parent, "STATIC", text, SS_LEFT, x, y, w, h, 0);
+    if (ctrl && g_header_font) {
+        SendMessageA(ctrl, WM_SETFONT, (WPARAM)g_header_font, (LPARAM)TRUE);
     }
     return ctrl;
 }
@@ -309,68 +330,79 @@ static void build_controls(HWND hwnd) {
      * Left column is three stacked boxes; right column is one taller box,
      * so the next full-width row starts below whichever column is taller. */
 
-    /* --- Left column (x=10, w=335): Connection & Settings --- */
-    add_ctrl(hwnd, "BUTTON", "Connection && Settings", BS_GROUPBOX, 10, 6, 335, 140, 0);
-    add_ctrl(hwnd, "STATIC", "Port:", SS_LEFT, 22, 26, 32, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 24, 112, 160, IDC_PORT_COMBO);
-    add_ctrl(hwnd, "BUTTON", "Refresh", BS_OWNERDRAW | WS_TABSTOP, 174, 24, 56, 22, IDC_REFRESH_BTN);
-    add_ctrl(hwnd, "BUTTON", "Connect", BS_OWNERDRAW | WS_TABSTOP, 234, 24, 66, 22, IDC_CONNECT_BTN);
-    add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 22, 54, 290, 16, IDC_CONN_STATUS_LBL);
+    /* Every section is a plain bordered panel (add_panel) with its title as
+     * a separate accent-colored label inside (add_header), rather than the
+     * classic BS_GROUPBOX notched-caption look. Content starts 30px below
+     * the panel top throughout (8px to the header, 16px of header, 6px
+     * gap), so every section follows the same rhythm. */
 
-    add_ctrl(hwnd, "STATIC", "Baud:", SS_LEFT, 22, 82, 34, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 58, 80, 90, 140, IDC_BAUD_COMBO);
-    add_ctrl(hwnd, "STATIC", "Data Bits:", SS_LEFT, 22, 110, 60, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 86, 108, 45, 100, IDC_DATABITS_COMBO);
-    add_ctrl(hwnd, "STATIC", "Parity:", SS_LEFT, 142, 110, 40, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 184, 108, 70, 100, IDC_PARITY_COMBO);
+    /* --- Left column (x=10, w=335): Connection & Settings --- */
+    add_panel(hwnd, 10, 6, 335, 150);
+    add_header(hwnd, "Connection && Settings", 22, 14, 300, 18);
+    add_ctrl(hwnd, "STATIC", "Port:", SS_LEFT, 22, 36, 32, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 34, 112, 160, IDC_PORT_COMBO);
+    add_ctrl(hwnd, "BUTTON", "Refresh", BS_OWNERDRAW | WS_TABSTOP, 174, 34, 56, 22, IDC_REFRESH_BTN);
+    add_ctrl(hwnd, "BUTTON", "Connect", BS_OWNERDRAW | WS_TABSTOP, 234, 34, 66, 22, IDC_CONNECT_BTN);
+    add_ctrl(hwnd, "STATIC", "Disconnected", SS_LEFT, 22, 64, 290, 16, IDC_CONN_STATUS_LBL);
+
+    add_ctrl(hwnd, "STATIC", "Baud:", SS_LEFT, 22, 92, 34, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 58, 90, 90, 140, IDC_BAUD_COMBO);
+    add_ctrl(hwnd, "STATIC", "Data Bits:", SS_LEFT, 22, 120, 60, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 86, 118, 45, 100, IDC_DATABITS_COMBO);
+    add_ctrl(hwnd, "STATIC", "Parity:", SS_LEFT, 142, 120, 40, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 184, 118, 70, 100, IDC_PARITY_COMBO);
+    /* panel bottom = 6 + 150 = 156 */
 
     /* --- Left column: Module Address & Output (combined) --- */
-    add_ctrl(hwnd, "BUTTON", "Address && Output", BS_GROUPBOX, 10, 154, 335, 84, 0);
-    add_ctrl(hwnd, "STATIC", "Address:", SS_LEFT, 22, 176, 52, 16, 0);
-    add_ctrl(hwnd, "EDIT", "0", WS_BORDER | ES_NUMBER, 76, 174, 50, 20, IDC_ADDR_EDIT);
-    add_ctrl(hwnd, "BUTTON", "Query", BS_OWNERDRAW | WS_TABSTOP, 132, 174, 60, 22, IDC_QUERY_ADDR_BTN);
-    add_ctrl(hwnd, "BUTTON", "Set", BS_OWNERDRAW | WS_TABSTOP, 198, 174, 50, 22, IDC_SET_ADDR_BTN);
-    add_ctrl(hwnd, "BUTTON", "Output ON", BS_AUTOCHECKBOX | WS_TABSTOP, 22, 204, 110, 20, IDC_OUTPUT_CHECK);
-    add_ctrl(hwnd, "STATIC", "OFF", SS_CENTER, 150, 204, 50, 20, IDC_OUTPUT_PILL);
-    add_ctrl(hwnd, "STATIC", "Freq:", SS_LEFT, 210, 204, 34, 20, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 246, 204, 80, 20, IDC_OUTPUT_FREQ_LBL);
-    /* left column bottom = 154 + 84 = 238 */
+    add_panel(hwnd, 10, 164, 335, 88);
+    add_header(hwnd, "Address & Output", 22, 172, 300, 18);
+    add_ctrl(hwnd, "STATIC", "Address:", SS_LEFT, 22, 194, 52, 16, 0);
+    add_ctrl(hwnd, "EDIT", "0", WS_BORDER | ES_NUMBER, 76, 192, 50, 20, IDC_ADDR_EDIT);
+    add_ctrl(hwnd, "BUTTON", "Query", BS_OWNERDRAW | WS_TABSTOP, 132, 192, 60, 22, IDC_QUERY_ADDR_BTN);
+    add_ctrl(hwnd, "BUTTON", "Set", BS_OWNERDRAW | WS_TABSTOP, 198, 192, 50, 22, IDC_SET_ADDR_BTN);
+    add_ctrl(hwnd, "BUTTON", "Output ON", BS_AUTOCHECKBOX | WS_TABSTOP, 22, 222, 110, 20, IDC_OUTPUT_CHECK);
+    add_ctrl(hwnd, "STATIC", "OFF", SS_CENTER, 150, 222, 50, 20, IDC_OUTPUT_PILL);
+    add_ctrl(hwnd, "STATIC", "Freq:", SS_LEFT, 210, 222, 34, 20, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 246, 222, 80, 20, IDC_OUTPUT_FREQ_LBL);
+    /* left column bottom = 164 + 88 = 252 */
 
     /* --- Right column (x=355, w=335): Signal Settings (mode/bandwidth/power only -
-     * frequency now lives in its own box below, where it's actually editable) --- */
-    add_ctrl(hwnd, "BUTTON", "Signal Settings", BS_GROUPBOX, 355, 6, 335, 212, 0);
-    add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 367, 26, 270, 16, 0);
-    add_ctrl(hwnd, "BUTTON", "White Noise", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 367, 44, 150, 18, IDC_RB_WHITE);
-    add_ctrl(hwnd, "BUTTON", "Linear Sweep", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 62, 150, 18, IDC_RB_SWEEP);
-    add_ctrl(hwnd, "BUTTON", "Comb Spectrum", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 80, 150, 18, IDC_RB_COMB);
-    add_ctrl(hwnd, "BUTTON", "Single (unconfirmed)", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 98, 190, 18, IDC_RB_SINGLE);
+     * frequency lives in its own panel below, where it's actually editable) --- */
+    add_panel(hwnd, 355, 6, 335, 218);
+    add_header(hwnd, "Signal Settings", 367, 14, 300, 18);
+    add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 367, 36, 270, 16, 0);
+    add_ctrl(hwnd, "BUTTON", "White Noise", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 367, 54, 150, 18, IDC_RB_WHITE);
+    add_ctrl(hwnd, "BUTTON", "Linear Sweep", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 72, 150, 18, IDC_RB_SWEEP);
+    add_ctrl(hwnd, "BUTTON", "Comb Spectrum", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 90, 150, 18, IDC_RB_COMB);
+    add_ctrl(hwnd, "BUTTON", "Single (unconfirmed)", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 108, 190, 18, IDC_RB_SINGLE);
     CheckDlgButton(hwnd, IDC_RB_WHITE, BST_CHECKED);
 
-    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 367, 124, 62, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 431, 122, 140, 140, IDC_BW_COMBO);
+    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 367, 134, 62, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 431, 132, 140, 140, IDC_BW_COMBO);
 
-    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 367, 150, 50, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 421, 148, 110, 100, IDC_POWER_COMBO);
+    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 367, 160, 50, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 421, 158, 110, 100, IDC_POWER_COMBO);
 
-    add_ctrl(hwnd, "BUTTON", "Apply", BS_OWNERDRAW | WS_TABSTOP, 367, 178, 80, 26, IDC_APPLY_BTN);
-    add_ctrl(hwnd, "BUTTON", "Read Device", BS_OWNERDRAW | WS_TABSTOP, 453, 178, 100, 26, IDC_READ_BTN);
-    /* right column bottom = 6 + 212 = 218 */
+    add_ctrl(hwnd, "BUTTON", "Apply", BS_OWNERDRAW | WS_TABSTOP, 367, 188, 80, 26, IDC_APPLY_BTN);
+    add_ctrl(hwnd, "BUTTON", "Read Device", BS_OWNERDRAW | WS_TABSTOP, 453, 188, 100, 26, IDC_READ_BTN);
+    /* right column bottom = 6 + 218 = 224 */
 
-    /* --- Full width below both columns (below y=238/218, the taller of the two):
+    /* --- Full width below both columns (below y=252/224, the taller of the two):
      * Frequency - the actual editable controls, not a readout --- */
-    add_ctrl(hwnd, "BUTTON", "Frequency", BS_GROUPBOX, 10, 246, 335, 78, 0);
-    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 268, 64, 16, 0);
+    add_panel(hwnd, 10, 260, 335, 84);
+    add_header(hwnd, "Frequency", 22, 268, 300, 18);
+    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 290, 64, 16, 0);
     {
         char freq_label[8];
         wsprintfA(freq_label, "%d", DEFAULT_FREQUENCY_MHZ);
-        add_ctrl(hwnd, "EDIT", freq_label, WS_BORDER | ES_NUMBER, 90, 266, 55, 20, IDC_FREQ_EDIT);
+        add_ctrl(hwnd, "EDIT", freq_label, WS_BORDER | ES_NUMBER, 90, 288, 55, 20, IDC_FREQ_EDIT);
     }
-    add_ctrl(hwnd, "STATIC", "MHz", SS_LEFT, 148, 268, 28, 16, 0);
-    add_ctrl(hwnd, "BUTTON", "-", BS_OWNERDRAW | WS_TABSTOP, 180, 266, 24, 20, IDC_FREQ_MINUS_BTN);
-    add_ctrl(hwnd, "BUTTON", "+", BS_OWNERDRAW | WS_TABSTOP, 206, 266, 24, 20, IDC_FREQ_PLUS_BTN);
-    add_ctrl(hwnd, "BUTTON", "Lock", BS_AUTOCHECKBOX | WS_TABSTOP, 234, 267, 55, 18, IDC_FREQ_LOCK_CHECK);
-    add_ctrl(hwnd, "STATIC", "Step:", SS_LEFT, 22, 292, 32, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 290, 80, 100, IDC_STEP_COMBO);
+    add_ctrl(hwnd, "STATIC", "MHz", SS_LEFT, 148, 290, 28, 16, 0);
+    add_ctrl(hwnd, "BUTTON", "-", BS_OWNERDRAW | WS_TABSTOP, 180, 288, 24, 20, IDC_FREQ_MINUS_BTN);
+    add_ctrl(hwnd, "BUTTON", "+", BS_OWNERDRAW | WS_TABSTOP, 206, 288, 24, 20, IDC_FREQ_PLUS_BTN);
+    add_ctrl(hwnd, "BUTTON", "Lock", BS_AUTOCHECKBOX | WS_TABSTOP, 234, 289, 55, 18, IDC_FREQ_LOCK_CHECK);
+    add_ctrl(hwnd, "STATIC", "Step:", SS_LEFT, 22, 314, 32, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 312, 80, 100, IDC_STEP_COMBO);
 
     /* Frequency starts locked - editing it is a real RF-output-affecting
      * change, so it needs a deliberate unlock (see IDC_FREQ_LOCK_CHECK in
@@ -382,22 +414,24 @@ static void build_controls(HWND hwnd) {
 
     /* --- TX / RX (same row as Frequency, right column - same height, same
      * two-row rhythm, so nothing looks lopsided) --- */
-    add_ctrl(hwnd, "BUTTON", "TX / RX", BS_GROUPBOX, 355, 246, 335, 78, 0);
-    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 268, 26, 16, 0);
+    add_panel(hwnd, 355, 260, 335, 84);
+    add_header(hwnd, "TX / RX", 367, 268, 300, 18);
+    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 290, 26, 16, 0);
     {
-        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 266, 270, 20, IDC_TX_EDIT);
+        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 288, 270, 20, IDC_TX_EDIT);
         if (tx) SendMessageA(tx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
-    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 367, 292, 26, 16, 0);
+    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 367, 314, 26, 16, 0);
     {
-        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 290, 270, 20, IDC_RX_EDIT);
+        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 312, 270, 20, IDC_RX_EDIT);
         if (rx) SendMessageA(rx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
+    /* row bottom = 260 + 84 = 344 */
 
-    /* Warning banner lives below both boxes so it adds zero space to
-     * either when hidden - it only claims a row when there's actually
-     * something to say. */
-    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 10, 332, 680, 32, IDC_WARNING_LBL);
+    /* Warning banner lives below both panels, on the white page rather
+     * than inside any panel, so it adds zero space when hidden - it only
+     * claims a row when there's actually something to say. */
+    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 10, 352, 680, 32, IDC_WARNING_LBL);
     ShowWindow(GetDlgItem(hwnd, IDC_WARNING_LBL), SW_HIDE);
 
     /* ---- populate lists ---- */
@@ -472,6 +506,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                                        DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, "Courier New");
             if (!g_mono_font) {
                 g_mono_font = g_font;
+            }
+
+            /* Bold variant of the same face/size as g_font, used for
+             * section title labels (see add_header()). */
+            {
+                LOGFONTA lf;
+                if (GetObjectA(g_font, sizeof(lf), &lf)) {
+                    lf.lfWeight = FW_BOLD;
+                    g_header_font = CreateFontIndirectA(&lf);
+                }
+            }
+            if (!g_header_font) {
+                g_header_font = g_font;
             }
 
             build_controls(hwnd);
@@ -566,12 +613,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (ctl == GetDlgItem(hwnd, IDC_CONN_STATUS_LBL)) {
                 SetTextColor(hdc, g_device.state.connected ? RGB(8, 127, 35) : RGB(176, 0, 32));
                 SetBkMode(hdc, TRANSPARENT);
-                return (LRESULT)g_brush_bg;
+                return (LRESULT)g_brush_panel;
             }
             if (ctl == GetDlgItem(hwnd, IDC_OUTPUT_PILL)) {
                 SetTextColor(hdc, g_device.state.output_on ? COLOR_APP_ACCENT : RGB(100, 100, 100));
                 SetBkMode(hdc, TRANSPARENT);
-                return (LRESULT)g_brush_bg;
+                return (LRESULT)g_brush_panel;
             }
             if (ctl == GetDlgItem(hwnd, IDC_WARNING_LBL)) {
                 if (!g_brush_warn) {
@@ -581,20 +628,28 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 SetBkColor(hdc, RGB(254, 243, 199));
                 return (LRESULT)g_brush_warn;
             }
-            /* Every other plain label: brand text on brand background. */
-            SetTextColor(hdc, COLOR_APP_TEXT);
+            /* Section title labels use the bold header font - recognized
+             * here (rather than by id) so add_header() is the only place
+             * that needs to know about it - and get the accent color. Every
+             * other plain label, including the empty-text panel rectangles
+             * from add_panel(), is charcoal text on the panel fill. */
+            if ((HFONT)SendMessageA(ctl, WM_GETFONT, 0, 0) == g_header_font) {
+                SetTextColor(hdc, COLOR_APP_ACCENT);
+            } else {
+                SetTextColor(hdc, COLOR_APP_TEXT);
+            }
             SetBkMode(hdc, TRANSPARENT);
-            return (LRESULT)g_brush_bg;
+            return (LRESULT)g_brush_panel;
         }
 
         case WM_CTLCOLORBTN: {
-            /* Checkboxes, radio buttons, and group box captions are BUTTON-
-             * class controls that aren't owner-drawn (only push buttons
-             * are), so they land here rather than WM_CTLCOLORSTATIC. */
+            /* Checkboxes and radio buttons are BUTTON-class controls that
+             * aren't owner-drawn (only push buttons are), so they land
+             * here rather than WM_CTLCOLORSTATIC. */
             HDC hdc = (HDC)wParam;
             SetTextColor(hdc, COLOR_APP_TEXT);
             SetBkMode(hdc, TRANSPARENT);
-            return (LRESULT)g_brush_bg;
+            return (LRESULT)g_brush_panel;
         }
 
         case WM_CTLCOLOREDIT:
@@ -638,8 +693,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (g_brush_warn) {
                 DeleteObject(g_brush_warn);
             }
-            if (g_brush_bg) {
-                DeleteObject(g_brush_bg);
+            if (g_brush_panel) {
+                DeleteObject(g_brush_panel);
+            }
+            if (g_brush_page) {
+                DeleteObject(g_brush_page);
             }
             if (g_brush_field) {
                 DeleteObject(g_brush_field);
@@ -652,6 +710,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
             if (g_mono_font && g_mono_font != g_font) {
                 DeleteObject(g_mono_font);
+            }
+            if (g_header_font && g_header_font != g_font) {
+                DeleteObject(g_header_font);
             }
             PostQuitMessage(0);
             return 0;
@@ -675,7 +736,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     /* Created before the window class registers, since hbrBackground needs
      * a real brush up front; freed in WM_DESTROY. */
-    g_brush_bg = CreateSolidBrush(COLOR_APP_BG);
+    g_brush_page = CreateSolidBrush(COLOR_APP_PAGE_BG);
+    g_brush_panel = CreateSolidBrush(COLOR_APP_PANEL_BG);
     g_brush_field = CreateSolidBrush(COLOR_APP_FIELD_BG);
     g_brush_accent = CreateSolidBrush(COLOR_APP_ACCENT);
     g_brush_accent_dis = CreateSolidBrush(COLOR_APP_ACCENT_DIS);
@@ -687,7 +749,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wc.hInstance = hInstance;
     wc.hIcon = LoadIconA(NULL, IDI_APPLICATION);
     wc.hCursor = LoadCursorA(NULL, IDC_ARROW);
-    wc.hbrBackground = g_brush_bg;
+    wc.hbrBackground = g_brush_page;
     wc.lpszClassName = "TxLiteMainWindow";
     RegisterClassExA(&wc);
 
