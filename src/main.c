@@ -82,6 +82,7 @@ static HBRUSH g_brush_field;
 static HBRUSH g_brush_accent;
 static HBRUSH g_brush_accent_dis;
 static HBRUSH g_brush_silver;
+static HBRUSH g_brush_light;
 
 /* Custom Proceed/Cancel confirm popup (see show_confirm_dialog) - state
  * for the one dialog that can be open at a time. */
@@ -376,23 +377,23 @@ static void conn_on_frame(const ProtoParsedFrame *frame, void *ctx) {
 }
 
 static void conn_on_raw_tx(const uint8_t *data, uint8_t len, void *ctx) {
-    char buf[64];
+    char buf[128];
     int pos = 0, i;
     (void)ctx;
-    for (i = 0; i < len && pos < (int)sizeof(buf) - 4; i++) {
-        pos += wsprintfA(buf + pos, i ? " %02X" : "%02X", data[i]);
+    for (i = 0; i < len && pos < (int)sizeof(buf) - 6; i++) {
+        pos += wsprintfA(buf + pos, "%02X | ", data[i]);
     }
     buf[pos] = '\0';
     SetDlgItemTextA(g_hwnd, IDC_TX_EDIT, buf);
 }
 
 static void conn_on_raw_rx(const uint8_t *data, uint16_t len, void *ctx) {
-    char buf[196];
+    char buf[340];
     int pos = 0, i;
     int n = (len > 64) ? 64 : (int)len; /* real frames are tiny; this just bounds a garbage burst */
     (void)ctx;
-    for (i = 0; i < n && pos < (int)sizeof(buf) - 4; i++) {
-        pos += wsprintfA(buf + pos, i ? " %02X" : "%02X", data[i]);
+    for (i = 0; i < n && pos < (int)sizeof(buf) - 6; i++) {
+        pos += wsprintfA(buf + pos, "%02X | ", data[i]);
     }
     buf[pos] = '\0';
     SetDlgItemTextA(g_hwnd, IDC_RX_EDIT, buf);
@@ -923,6 +924,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 SetBkColor(hdc, RGB(254, 243, 199));
                 return (LRESULT)g_brush_warn;
             }
+            /* TX/RX are ES_READONLY, so they land here rather than
+             * WM_CTLCOLOREDIT - a light grey field reads more like a
+             * terminal/log readout against the dark theme. */
+            if (ctl == GetDlgItem(hwnd, IDC_TX_EDIT) || ctl == GetDlgItem(hwnd, IDC_RX_EDIT)) {
+                SetTextColor(hdc, RGB(30, 31, 33));
+                SetBkColor(hdc, RGB(230, 231, 233));
+                SetBkMode(hdc, OPAQUE);
+                return (LRESULT)g_brush_light;
+            }
             /* Section title labels use the bold header font - recognized
              * here (rather than by id) so add_header() is the only place
              * that needs to know about it - and get the accent color. Every
@@ -949,9 +959,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         case WM_CTLCOLOREDIT:
         case WM_CTLCOLORLISTBOX: {
-            /* Edit boxes and combo box display/list areas: white fields on
-             * the brand background read as "input", same convention as the
-             * rest of the app's flat, unthemed styling. */
+            /* Editable edit boxes and combo box list areas. TX/RX are
+             * ES_READONLY, so they never reach here - see WM_CTLCOLORSTATIC
+             * instead. */
             HDC hdc = (HDC)wParam;
             SetTextColor(hdc, COLOR_APP_TEXT);
             SetBkColor(hdc, COLOR_APP_FIELD_BG);
@@ -1009,6 +1019,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (g_brush_silver) {
                 DeleteObject(g_brush_silver);
             }
+            if (g_brush_light) {
+                DeleteObject(g_brush_light);
+            }
             if (g_mono_font && g_mono_font != g_font) {
                 DeleteObject(g_mono_font);
             }
@@ -1044,6 +1057,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     g_brush_accent_dis = CreateSolidBrush(COLOR_APP_ACCENT_DIS);
     g_brush_dot = CreateSolidBrush(COLOR_APP_DOT);
     g_brush_silver = CreateSolidBrush(COLOR_APP_SILVER);
+    g_brush_light = CreateSolidBrush(RGB(230, 231, 233));
 
     memset(&wc, 0, sizeof(wc));
     wc.cbSize = sizeof(wc);
