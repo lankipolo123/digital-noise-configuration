@@ -1,5 +1,7 @@
 #pragma once
 
+#define IDI_APP_ICON         100
+
 #define IDC_PORT_COMBO       1001
 #define IDC_REFRESH_BTN      1002
 #define IDC_CONNECT_BTN      1003

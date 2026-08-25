@@ -54,6 +54,14 @@ static const int STEP_OPTIONS[] = { 1, 10, 50, 100 };
 #define COLOR_APP_FIELD_BG  RGB(23, 24, 26)
 #define COLOR_APP_CONNECTED RGB(58, 181, 94)
 #define COLOR_APP_DISCONNECTED RGB(224, 90, 90)
+#define COLOR_APP_DOT       RGB(50, 52, 57)
+
+/* Background dot grid: drawn once across the whole client rect in
+ * WM_ERASEBKGND, before any panel paints on top of it - panels are opaque
+ * across their full rect, so the dots end up visible only in the gaps
+ * around the sections, never inside one. */
+#define DOT_GRID_SPACING 24
+#define DOT_GRID_SIZE 2
 
 static HINSTANCE g_hinst;
 static HWND g_hwnd;
@@ -62,6 +70,7 @@ static HFONT g_mono_font;
 static HFONT g_header_font;
 static HBRUSH g_brush_warn;
 static HBRUSH g_brush_panel;
+static HBRUSH g_brush_dot;
 static HBRUSH g_brush_page;
 static HBRUSH g_brush_field;
 static HBRUSH g_brush_accent;
@@ -103,6 +112,20 @@ static HWND add_header(HWND parent, LPCSTR text, int x, int y, int w, int h) {
         SendMessageA(ctrl, WM_SETFONT, (WPARAM)g_header_font, (LPARAM)TRUE);
     }
     return ctrl;
+}
+
+static void draw_dot_grid(HDC hdc, const RECT *rc) {
+    int x, y;
+    for (y = DOT_GRID_SPACING / 2; y < rc->bottom; y += DOT_GRID_SPACING) {
+        for (x = DOT_GRID_SPACING / 2; x < rc->right; x += DOT_GRID_SPACING) {
+            RECT dot;
+            dot.left = x;
+            dot.top = y;
+            dot.right = x + DOT_GRID_SIZE;
+            dot.bottom = y + DOT_GRID_SIZE;
+            FillRect(hdc, &dot, g_brush_dot);
+        }
+    }
 }
 
 /* ---- device/connection -> UI callbacks (single global window, so these
@@ -373,7 +396,7 @@ static void build_controls(HWND hwnd) {
 
     /* --- Right column (x=355, w=335): Signal Settings (mode/bandwidth/power only -
      * frequency lives in its own panel below, where it's actually editable) --- */
-    add_panel(hwnd, 355, 6, 335, 218);
+    add_panel(hwnd, 355, 6, 335, 204);
     add_header(hwnd, "Signal Settings", 367, 14, 300, 18);
     add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 367, 36, 270, 16, 0);
     add_ctrl(hwnd, "BUTTON", "White Noise", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 367, 54, 150, 18, IDC_RB_WHITE);
@@ -382,15 +405,15 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "BUTTON", "Single (unconfirmed)", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 108, 190, 18, IDC_RB_SINGLE);
     CheckDlgButton(hwnd, IDC_RB_WHITE, BST_CHECKED);
 
-    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 367, 134, 62, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 431, 132, 140, 140, IDC_BW_COMBO);
+    add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 367, 130, 62, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 431, 128, 140, 140, IDC_BW_COMBO);
 
-    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 367, 160, 50, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 421, 158, 110, 100, IDC_POWER_COMBO);
+    add_ctrl(hwnd, "STATIC", "Power:", SS_LEFT, 367, 152, 50, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 421, 150, 110, 100, IDC_POWER_COMBO);
 
-    add_ctrl(hwnd, "BUTTON", "Apply", BS_OWNERDRAW | WS_TABSTOP, 367, 188, 80, 26, IDC_APPLY_BTN);
-    add_ctrl(hwnd, "BUTTON", "Read Device", BS_OWNERDRAW | WS_TABSTOP, 453, 188, 100, 26, IDC_READ_BTN);
-    /* right column bottom = 6 + 218 = 224 */
+    add_ctrl(hwnd, "BUTTON", "Apply", BS_OWNERDRAW | WS_TABSTOP, 367, 174, 80, 26, IDC_APPLY_BTN);
+    add_ctrl(hwnd, "BUTTON", "Read Device", BS_OWNERDRAW | WS_TABSTOP, 453, 174, 100, 26, IDC_READ_BTN);
+    /* right column bottom = 6 + 204 = 210 */
 
     /* --- Full width below both columns (below y=252/224, the taller of the two):
      * Frequency - the actual editable controls, not a readout --- */
@@ -546,6 +569,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             ui_refresh_status();
             SetTimer(hwnd, ID_POLL_TIMER, 50, NULL);
             return 0;
+        }
+
+        case WM_ERASEBKGND: {
+            HDC hdc = (HDC)wParam;
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+            FillRect(hdc, &rc, g_brush_page);
+            draw_dot_grid(hdc, &rc);
+            return 1;
         }
 
         case WM_TIMER:
@@ -713,6 +745,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (g_brush_accent_dis) {
                 DeleteObject(g_brush_accent_dis);
             }
+            if (g_brush_dot) {
+                DeleteObject(g_brush_dot);
+            }
             if (g_mono_font && g_mono_font != g_font) {
                 DeleteObject(g_mono_font);
             }
@@ -746,13 +781,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     g_brush_field = CreateSolidBrush(COLOR_APP_FIELD_BG);
     g_brush_accent = CreateSolidBrush(COLOR_APP_ACCENT);
     g_brush_accent_dis = CreateSolidBrush(COLOR_APP_ACCENT_DIS);
+    g_brush_dot = CreateSolidBrush(COLOR_APP_DOT);
 
     memset(&wc, 0, sizeof(wc));
     wc.cbSize = sizeof(wc);
     wc.style = CS_HREDRAW | CS_VREDRAW;
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInstance;
-    wc.hIcon = LoadIconA(NULL, IDI_APPLICATION);
+    wc.hIcon = (HICON)LoadImageA(hInstance, MAKEINTRESOURCEA(IDI_APP_ICON), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR);
+    wc.hIconSm = (HICON)LoadImageA(hInstance, MAKEINTRESOURCEA(IDI_APP_ICON), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR);
+    if (!wc.hIcon) {
+        wc.hIcon = LoadIconA(NULL, IDI_APPLICATION);
+    }
     wc.hCursor = LoadCursorA(NULL, IDC_ARROW);
     wc.hbrBackground = g_brush_page;
     wc.lpszClassName = "TxLiteMainWindow";
