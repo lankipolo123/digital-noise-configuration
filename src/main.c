@@ -709,9 +709,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 }
                 case IDC_FREQ_APPLY_BTN: {
                     if (MessageBoxA(hwnd,
-                                     "Apply this frequency?\n\n"
-                                     "Misconfiguration or an excessively high frequency "
-                                     "can cause hardware damage.",
+                                     "WARNING: Incorrect frequency settings can damage "
+                                     "your RF Amplifier.",
                                      "Confirm", MB_YESNO | MB_ICONWARNING) == IDYES) {
                         on_apply_clicked();
                     }
