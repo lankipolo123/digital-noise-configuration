@@ -514,6 +514,7 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "BUTTON", "Lock", BS_AUTOCHECKBOX | WS_TABSTOP, 234, 273, 55, 18, IDC_FREQ_LOCK_CHECK);
     add_ctrl(hwnd, "STATIC", "Step:", SS_LEFT, 22, 298, 32, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 296, 80, 100, IDC_STEP_COMBO);
+    add_ctrl(hwnd, "BUTTON", "Apply", BS_OWNERDRAW | WS_TABSTOP, 250, 296, 65, 22, IDC_FREQ_APPLY_BTN);
 
     /* Frequency starts locked - editing it is a real RF-output-affecting
      * change, so it needs a deliberate unlock (see IDC_FREQ_LOCK_CHECK in
@@ -709,8 +710,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                      * output's frequency - does. */
                     bool locked = (IsDlgButtonChecked(hwnd, IDC_FREQ_LOCK_CHECK) == BST_CHECKED);
                     if (!locked) {
-                        if (MessageBoxA(hwnd, "Unlock frequency for editing?", "Confirm",
-                                         MB_YESNO | MB_ICONWARNING) != IDYES) {
+                        if (MessageBoxA(hwnd,
+                                         "Unlock frequency for editing?\n\n"
+                                         "Misconfiguration or an excessively high frequency "
+                                         "can cause hardware damage.",
+                                         "Confirm", MB_YESNO | MB_ICONWARNING) != IDYES) {
                             CheckDlgButton(hwnd, IDC_FREQ_LOCK_CHECK, BST_CHECKED);
                             locked = true;
                         }
@@ -721,6 +725,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     break;
                 }
                 case IDC_APPLY_BTN: on_apply_clicked(); break;
+                case IDC_FREQ_APPLY_BTN: {
+                    if (MessageBoxA(hwnd,
+                                     "Apply this frequency?\n\n"
+                                     "Misconfiguration or an excessively high frequency "
+                                     "can cause hardware damage.",
+                                     "Confirm", MB_YESNO | MB_ICONWARNING) == IDYES) {
+                        on_apply_clicked();
+                    }
+                    break;
+                }
                 case IDC_READ_BTN: device_read_status(&g_device); break;
                 case IDC_RB_WHITE:
                 case IDC_RB_SWEEP:

@@ -38,4 +38,6 @@
 
 #define IDC_FREQ_LOCK_CHECK  1036
 
+#define IDC_FREQ_APPLY_BTN   1037
+
 #define ID_POLL_TIMER        1
