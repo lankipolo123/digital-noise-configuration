@@ -118,7 +118,7 @@ int proto_power_db(uint8_t code) {
 }
 
 static const char *const MODE_NAMES[PROTO_MODE_COUNT] = {
-    "White Noise", "Linear Sweep", "Comb Spectrum", "Single"
+    "Pseudo Random Noise", "Linear Sweep", "Comb Spectrum", "Continuous Wave"
 };
 
 const char *proto_mode_name(uint8_t mode) {

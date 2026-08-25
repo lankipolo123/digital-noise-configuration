@@ -462,10 +462,10 @@ static void build_controls(HWND hwnd) {
     add_panel(hwnd, 355, 6, 335, 204);
     add_header(hwnd, "Signal Settings", 367, 14, 300, 18);
     add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 367, 36, 270, 16, 0);
-    add_ctrl(hwnd, "BUTTON", "White Noise", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 367, 54, 150, 18, IDC_RB_WHITE);
+    add_ctrl(hwnd, "BUTTON", "Pseudo Random Noise", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 367, 54, 220, 18, IDC_RB_WHITE);
     add_ctrl(hwnd, "BUTTON", "Linear Sweep", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 72, 150, 18, IDC_RB_SWEEP);
     add_ctrl(hwnd, "BUTTON", "Comb Spectrum", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 90, 150, 18, IDC_RB_COMB);
-    add_ctrl(hwnd, "BUTTON", "Single (unconfirmed)", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 108, 190, 18, IDC_RB_SINGLE);
+    add_ctrl(hwnd, "BUTTON", "Continuous Wave (unconfirmed)", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 108, 300, 18, IDC_RB_SINGLE);
     CheckDlgButton(hwnd, IDC_RB_WHITE, BST_CHECKED);
 
     add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 367, 130, 62, 16, 0);
