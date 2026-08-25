@@ -80,6 +80,7 @@ static HBRUSH g_brush_page;
 static HBRUSH g_brush_field;
 static HBRUSH g_brush_accent;
 static HBRUSH g_brush_accent_dis;
+static HBRUSH g_brush_radio_bg;
 
 static Connection g_conn;
 static Device g_device;
@@ -810,15 +811,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (dis->CtlType == ODT_BUTTON &&
                 (dis->CtlID == IDC_RB_WHITE || dis->CtlID == IDC_RB_SWEEP ||
                  dis->CtlID == IDC_RB_COMB || dis->CtlID == IDC_RB_SINGLE)) {
-                /* Modern flat radio: an outline circle, filled with a
-                 * smaller accent dot when selected, label to its right -
-                 * replaces the system radio glyph, which doesn't follow
-                 * the dark theme. */
+                /* White-filled circle (closer to the classic radio look,
+                 * easier to read at a glance) with a colored ring and,
+                 * when selected, a colored center dot - own drawing rather
+                 * than the system glyph so it still matches the accent
+                 * palette instead of the OS theme's. */
                 char text[64];
                 bool checked = ((int)dis->CtlID == g_signal_mode);
                 RECT rc = dis->rcItem;
                 RECT text_rc = rc;
-                int diam = 14;
+                int diam = 16;
                 int cy = (rc.top + rc.bottom) / 2;
                 int cx = rc.left + diam / 2 + 1;
                 HPEN ring_pen, old_pen;
@@ -828,14 +830,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
                 ring_pen = CreatePen(PS_SOLID, 2, checked ? COLOR_APP_ACCENT : COLOR_APP_MUTED);
                 old_pen = (HPEN)SelectObject(dis->hDC, ring_pen);
-                old_brush = (HBRUSH)SelectObject(dis->hDC, g_brush_field);
+                old_brush = (HBRUSH)SelectObject(dis->hDC, g_brush_radio_bg);
                 Ellipse(dis->hDC, cx - diam / 2, cy - diam / 2, cx + diam / 2, cy + diam / 2);
                 SelectObject(dis->hDC, old_brush);
                 SelectObject(dis->hDC, old_pen);
                 DeleteObject(ring_pen);
 
                 if (checked) {
-                    int inner = 6;
+                    int inner = 8;
                     HPEN old_pen2 = (HPEN)SelectObject(dis->hDC, GetStockObject(NULL_PEN));
                     HBRUSH old_brush2 = (HBRUSH)SelectObject(dis->hDC, g_brush_accent);
                     Ellipse(dis->hDC, cx - inner / 2, cy - inner / 2, cx + inner / 2, cy + inner / 2);
@@ -899,6 +901,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (g_brush_dot) {
                 DeleteObject(g_brush_dot);
             }
+            if (g_brush_radio_bg) {
+                DeleteObject(g_brush_radio_bg);
+            }
             if (g_mono_font && g_mono_font != g_font) {
                 DeleteObject(g_mono_font);
             }
@@ -933,6 +938,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     g_brush_accent = CreateSolidBrush(COLOR_APP_ACCENT);
     g_brush_accent_dis = CreateSolidBrush(COLOR_APP_ACCENT_DIS);
     g_brush_dot = CreateSolidBrush(COLOR_APP_DOT);
+    g_brush_radio_bg = CreateSolidBrush(RGB(255, 255, 255));
 
     memset(&wc, 0, sizeof(wc));
     wc.cbSize = sizeof(wc);
