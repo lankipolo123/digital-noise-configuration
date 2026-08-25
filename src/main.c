@@ -12,7 +12,7 @@
 #include "device.h"
 
 #define CLIENT_WIDTH  700
-#define CLIENT_HEIGHT 396
+#define CLIENT_HEIGHT 352
 
 static const int BAUD_OPTIONS[] = { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 2000000 };
 #define BAUD_OPTIONS_COUNT 9
@@ -423,9 +423,12 @@ static void build_controls(HWND hwnd) {
      * the panel top throughout (8px to the header, 16px of header, 6px
      * gap), so every section follows the same rhythm. */
 
-    /* --- Left column (x=10, w=335): Connection & Settings --- */
-    add_panel(hwnd, 10, 6, 335, 150);
-    add_header(hwnd, "Connection && Settings", 22, 14, 300, 18);
+    /* --- Left column (x=10, w=335): Connection, Address & Output, all one
+     * panel now - its natural height (204) happens to land almost exactly
+     * on Signal Settings' (also 204), so both columns bottom out together
+     * and nothing downstream needs to guess which column is taller. --- */
+    add_panel(hwnd, 10, 6, 335, 204);
+    add_header(hwnd, "Connection, Address && Output", 22, 14, 300, 18);
     add_ctrl(hwnd, "STATIC", "Port:", SS_LEFT, 22, 36, 32, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 34, 112, 160, IDC_PORT_COMBO);
     add_ctrl(hwnd, "BUTTON", "Refresh", BS_OWNERDRAW | WS_TABSTOP, 174, 34, 56, 22, IDC_REFRESH_BTN);
@@ -438,20 +441,17 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 86, 118, 45, 100, IDC_DATABITS_COMBO);
     add_ctrl(hwnd, "STATIC", "Parity:", SS_LEFT, 142, 120, 40, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 184, 118, 70, 100, IDC_PARITY_COMBO);
-    /* panel bottom = 6 + 150 = 156 */
 
-    /* --- Left column: Module Address & Output (combined) --- */
-    add_panel(hwnd, 10, 164, 335, 88);
-    add_header(hwnd, "Address & Output", 22, 172, 300, 18);
-    add_ctrl(hwnd, "STATIC", "Address:", SS_LEFT, 22, 194, 52, 16, 0);
-    add_ctrl(hwnd, "EDIT", "0", WS_BORDER | ES_NUMBER, 76, 192, 50, 20, IDC_ADDR_EDIT);
-    add_ctrl(hwnd, "BUTTON", "Query", BS_OWNERDRAW | WS_TABSTOP, 132, 192, 60, 22, IDC_QUERY_ADDR_BTN);
-    add_ctrl(hwnd, "BUTTON", "Set", BS_OWNERDRAW | WS_TABSTOP, 198, 192, 50, 22, IDC_SET_ADDR_BTN);
-    add_ctrl(hwnd, "BUTTON", "Output ON", BS_AUTOCHECKBOX | WS_TABSTOP, 22, 222, 110, 20, IDC_OUTPUT_CHECK);
-    add_ctrl(hwnd, "STATIC", "OFF", SS_CENTER, 150, 222, 50, 20, IDC_OUTPUT_PILL);
-    add_ctrl(hwnd, "STATIC", "Freq:", SS_LEFT, 210, 222, 34, 20, 0);
-    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 246, 222, 80, 20, IDC_OUTPUT_FREQ_LBL);
-    /* left column bottom = 164 + 88 = 252 */
+    add_ctrl(hwnd, "STATIC", "Address:", SS_LEFT, 22, 148, 52, 16, 0);
+    add_ctrl(hwnd, "EDIT", "0", WS_BORDER | ES_NUMBER, 76, 146, 50, 20, IDC_ADDR_EDIT);
+    add_ctrl(hwnd, "BUTTON", "Query", BS_OWNERDRAW | WS_TABSTOP, 132, 146, 60, 22, IDC_QUERY_ADDR_BTN);
+    add_ctrl(hwnd, "BUTTON", "Set", BS_OWNERDRAW | WS_TABSTOP, 198, 146, 50, 22, IDC_SET_ADDR_BTN);
+
+    add_ctrl(hwnd, "BUTTON", "Output ON", BS_AUTOCHECKBOX | WS_TABSTOP, 22, 176, 110, 20, IDC_OUTPUT_CHECK);
+    add_ctrl(hwnd, "STATIC", "OFF", SS_CENTER, 150, 176, 50, 20, IDC_OUTPUT_PILL);
+    add_ctrl(hwnd, "STATIC", "Freq:", SS_LEFT, 210, 176, 34, 20, 0);
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT, 246, 176, 80, 20, IDC_OUTPUT_FREQ_LBL);
+    /* left column bottom = 6 + 204 = 210 */
 
     /* --- Right column (x=355, w=335): Signal Settings (mode/bandwidth/power only -
      * frequency lives in its own panel below, where it's actually editable) --- */
@@ -474,23 +474,22 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "BUTTON", "Read Device", BS_OWNERDRAW | WS_TABSTOP, 453, 174, 100, 26, IDC_READ_BTN);
     /* right column bottom = 6 + 204 = 210 */
 
-    /* --- Left column continues: Frequency (below Address & Output at
-     * y=252, not waiting for the right column - each column flows on its
-     * own, so no panel ever sits behind a gap sized for the other one) --- */
-    add_panel(hwnd, 10, 260, 335, 84);
-    add_header(hwnd, "Frequency", 22, 268, 300, 18);
-    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 290, 64, 16, 0);
+    /* --- Both columns now bottom out at the same y=210, so Frequency and
+     * TX/RX start together at y=218 - no leftover gap on either side. --- */
+    add_panel(hwnd, 10, 218, 335, 84);
+    add_header(hwnd, "Frequency", 22, 226, 300, 18);
+    add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 248, 64, 16, 0);
     {
         char freq_label[8];
         wsprintfA(freq_label, "%d", DEFAULT_FREQUENCY_MHZ);
-        add_ctrl(hwnd, "EDIT", freq_label, WS_BORDER | ES_NUMBER, 90, 288, 55, 20, IDC_FREQ_EDIT);
+        add_ctrl(hwnd, "EDIT", freq_label, WS_BORDER | ES_NUMBER, 90, 246, 55, 20, IDC_FREQ_EDIT);
     }
-    add_ctrl(hwnd, "STATIC", "MHz", SS_LEFT, 148, 290, 28, 16, 0);
-    add_ctrl(hwnd, "BUTTON", "-", BS_OWNERDRAW | WS_TABSTOP, 180, 288, 24, 20, IDC_FREQ_MINUS_BTN);
-    add_ctrl(hwnd, "BUTTON", "+", BS_OWNERDRAW | WS_TABSTOP, 206, 288, 24, 20, IDC_FREQ_PLUS_BTN);
-    add_ctrl(hwnd, "BUTTON", "Lock", BS_AUTOCHECKBOX | WS_TABSTOP, 234, 289, 55, 18, IDC_FREQ_LOCK_CHECK);
-    add_ctrl(hwnd, "STATIC", "Step:", SS_LEFT, 22, 314, 32, 16, 0);
-    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 312, 80, 100, IDC_STEP_COMBO);
+    add_ctrl(hwnd, "STATIC", "MHz", SS_LEFT, 148, 248, 28, 16, 0);
+    add_ctrl(hwnd, "BUTTON", "-", BS_OWNERDRAW | WS_TABSTOP, 180, 246, 24, 20, IDC_FREQ_MINUS_BTN);
+    add_ctrl(hwnd, "BUTTON", "+", BS_OWNERDRAW | WS_TABSTOP, 206, 246, 24, 20, IDC_FREQ_PLUS_BTN);
+    add_ctrl(hwnd, "BUTTON", "Lock", BS_AUTOCHECKBOX | WS_TABSTOP, 234, 247, 55, 18, IDC_FREQ_LOCK_CHECK);
+    add_ctrl(hwnd, "STATIC", "Step:", SS_LEFT, 22, 272, 32, 16, 0);
+    add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 270, 80, 100, IDC_STEP_COMBO);
 
     /* Frequency starts locked - editing it is a real RF-output-affecting
      * change, so it needs a deliberate unlock (see IDC_FREQ_LOCK_CHECK in
@@ -500,8 +499,6 @@ static void build_controls(HWND hwnd) {
     EnableWindow(GetDlgItem(hwnd, IDC_FREQ_MINUS_BTN), FALSE);
     EnableWindow(GetDlgItem(hwnd, IDC_FREQ_PLUS_BTN), FALSE);
 
-    /* --- Right column continues: TX / RX (below Signal Settings at
-     * y=210, its own column's actual bottom - not the left column's) --- */
     add_panel(hwnd, 355, 218, 335, 84);
     add_header(hwnd, "TX / RX", 367, 226, 300, 18);
     add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 248, 26, 16, 0);
@@ -514,12 +511,12 @@ static void build_controls(HWND hwnd) {
         HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 270, 270, 20, IDC_RX_EDIT);
         if (rx) SendMessageA(rx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
-    /* left column bottom = 260 + 84 = 344; right column bottom = 218 + 84 = 302 */
+    /* both columns bottom = 218 + 84 = 302 */
 
     /* Warning banner lives below both columns, on the page rather than
      * inside any panel, so it adds zero space when hidden - it only
      * claims a row when there's actually something to say. */
-    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 10, 352, 680, 32, IDC_WARNING_LBL);
+    add_ctrl(hwnd, "STATIC", "", SS_LEFT, 10, 310, 680, 32, IDC_WARNING_LBL);
     ShowWindow(GetDlgItem(hwnd, IDC_WARNING_LBL), SW_HIDE);
 
     /* ---- populate lists ---- */
