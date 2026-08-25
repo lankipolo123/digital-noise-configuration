@@ -55,6 +55,10 @@ static const int STEP_OPTIONS[] = { 1, 10, 50, 100 };
 #define COLOR_APP_CONNECTED RGB(58, 181, 94)
 #define COLOR_APP_DISCONNECTED RGB(224, 90, 90)
 #define COLOR_APP_DOT       RGB(50, 52, 57)
+#define COLOR_APP_PANEL_BORDER RGB(63, 66, 71)
+
+/* Chamfered-corner panels: how much to cut off each corner. */
+#define PANEL_CHAMFER 10
 
 /* Background dot grid: drawn once across the whole client rect in
  * WM_ERASEBKGND, before any panel paints on top of it - panels are opaque
@@ -68,6 +72,7 @@ static HWND g_hwnd;
 static HFONT g_font;
 static HFONT g_mono_font;
 static HFONT g_header_font;
+static WNDPROC g_panel_orig_proc;
 static HBRUSH g_brush_warn;
 static HBRUSH g_brush_panel;
 static HBRUSH g_brush_dot;
@@ -96,12 +101,66 @@ static HWND add_ctrl(HWND parent, LPCSTR cls, LPCSTR text, DWORD style, int x, i
     return ctrl;
 }
 
-/* A section "panel": a plain bordered rectangle with no built-in caption,
- * filled by the WM_CTLCOLORSTATIC default case (panel gray) - the text
- * title is a separate add_header() label placed inside it, so the design
- * isn't tied to the classic BS_GROUPBOX notched-border look. */
+/* Chamfered-corner panel painting: replaces the STATIC control's default
+ * WM_PAINT/WM_ERASEBKGND entirely, so the panel fills and outlines itself
+ * as an octagon (rectangle with corners cut at 45 degrees) instead of a
+ * plain square-cornered box. All add_panel() instances are the same
+ * "STATIC" system class, so the pre-subclass window proc is identical
+ * across them - captured once and reused. */
+static LRESULT CALLBACK panel_subclass_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_ERASEBKGND) {
+        return 1;
+    }
+    if (msg == WM_PAINT) {
+        PAINTSTRUCT ps;
+        HDC hdc;
+        RECT rc;
+        POINT pts[8];
+        HBRUSH old_brush;
+        HPEN pen, old_pen;
+        int c = PANEL_CHAMFER;
+
+        hdc = BeginPaint(hwnd, &ps);
+        GetClientRect(hwnd, &rc);
+
+        pts[0].x = rc.left;              pts[0].y = rc.top + c;
+        pts[1].x = rc.left + c;          pts[1].y = rc.top;
+        pts[2].x = rc.right - 1 - c;     pts[2].y = rc.top;
+        pts[3].x = rc.right - 1;         pts[3].y = rc.top + c;
+        pts[4].x = rc.right - 1;         pts[4].y = rc.bottom - 1 - c;
+        pts[5].x = rc.right - 1 - c;     pts[5].y = rc.bottom - 1;
+        pts[6].x = rc.left + c;          pts[6].y = rc.bottom - 1;
+        pts[7].x = rc.left;              pts[7].y = rc.bottom - 1 - c;
+
+        old_brush = (HBRUSH)SelectObject(hdc, g_brush_panel);
+        pen = CreatePen(PS_SOLID, 1, COLOR_APP_PANEL_BORDER);
+        old_pen = (HPEN)SelectObject(hdc, pen);
+
+        Polygon(hdc, pts, 8);
+
+        SelectObject(hdc, old_pen);
+        DeleteObject(pen);
+        SelectObject(hdc, old_brush);
+
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    return CallWindowProcA(g_panel_orig_proc, hwnd, msg, wParam, lParam);
+}
+
+/* A section "panel": a chamfered-corner rectangle with no built-in
+ * caption - the text title is a separate add_header() label placed
+ * inside it, so the design isn't tied to the classic BS_GROUPBOX
+ * notched-border look. */
 static HWND add_panel(HWND parent, int x, int y, int w, int h) {
-    return add_ctrl(parent, "STATIC", NULL, WS_BORDER | SS_LEFT, x, y, w, h, 0);
+    HWND ctrl = add_ctrl(parent, "STATIC", NULL, SS_LEFT, x, y, w, h, 0);
+    if (ctrl) {
+        if (!g_panel_orig_proc) {
+            g_panel_orig_proc = (WNDPROC)GetWindowLongPtrA(ctrl, GWLP_WNDPROC);
+        }
+        SetWindowLongPtrA(ctrl, GWLP_WNDPROC, (LONG_PTR)panel_subclass_proc);
+    }
+    return ctrl;
 }
 
 /* Section title text, drawn inside the panel using the bold header font;
@@ -415,8 +474,9 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "BUTTON", "Read Device", BS_OWNERDRAW | WS_TABSTOP, 453, 174, 100, 26, IDC_READ_BTN);
     /* right column bottom = 6 + 204 = 210 */
 
-    /* --- Full width below both columns (below y=252/224, the taller of the two):
-     * Frequency - the actual editable controls, not a readout --- */
+    /* --- Left column continues: Frequency (below Address & Output at
+     * y=252, not waiting for the right column - each column flows on its
+     * own, so no panel ever sits behind a gap sized for the other one) --- */
     add_panel(hwnd, 10, 260, 335, 84);
     add_header(hwnd, "Frequency", 22, 268, 300, 18);
     add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 290, 64, 16, 0);
@@ -440,24 +500,24 @@ static void build_controls(HWND hwnd) {
     EnableWindow(GetDlgItem(hwnd, IDC_FREQ_MINUS_BTN), FALSE);
     EnableWindow(GetDlgItem(hwnd, IDC_FREQ_PLUS_BTN), FALSE);
 
-    /* --- TX / RX (same row as Frequency, right column - same height, same
-     * two-row rhythm, so nothing looks lopsided) --- */
-    add_panel(hwnd, 355, 260, 335, 84);
-    add_header(hwnd, "TX / RX", 367, 268, 300, 18);
-    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 290, 26, 16, 0);
+    /* --- Right column continues: TX / RX (below Signal Settings at
+     * y=210, its own column's actual bottom - not the left column's) --- */
+    add_panel(hwnd, 355, 218, 335, 84);
+    add_header(hwnd, "TX / RX", 367, 226, 300, 18);
+    add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 248, 26, 16, 0);
     {
-        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 288, 270, 20, IDC_TX_EDIT);
+        HWND tx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 246, 270, 20, IDC_TX_EDIT);
         if (tx) SendMessageA(tx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
-    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 367, 314, 26, 16, 0);
+    add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 367, 272, 26, 16, 0);
     {
-        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 312, 270, 20, IDC_RX_EDIT);
+        HWND rx = add_ctrl(hwnd, "EDIT", "", WS_BORDER | ES_READONLY, 393, 270, 270, 20, IDC_RX_EDIT);
         if (rx) SendMessageA(rx, WM_SETFONT, (WPARAM)g_mono_font, TRUE);
     }
-    /* row bottom = 260 + 84 = 344 */
+    /* left column bottom = 260 + 84 = 344; right column bottom = 218 + 84 = 302 */
 
-    /* Warning banner lives below both panels, on the white page rather
-     * than inside any panel, so it adds zero space when hidden - it only
+    /* Warning banner lives below both columns, on the page rather than
+     * inside any panel, so it adds zero space when hidden - it only
      * claims a row when there's actually something to say. */
     add_ctrl(hwnd, "STATIC", "", SS_LEFT, 10, 352, 680, 32, IDC_WARNING_LBL);
     ShowWindow(GetDlgItem(hwnd, IDC_WARNING_LBL), SW_HIDE);
