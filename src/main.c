@@ -80,7 +80,6 @@ static HBRUSH g_brush_page;
 static HBRUSH g_brush_field;
 static HBRUSH g_brush_accent;
 static HBRUSH g_brush_accent_dis;
-static HBRUSH g_brush_radio_bg;
 
 static Connection g_conn;
 static Device g_device;
@@ -478,14 +477,16 @@ static void build_controls(HWND hwnd) {
     add_panel(hwnd, 355, 6, 335, 204);
     add_header(hwnd, "Signal Settings", 367, 14, 300, 18);
     add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 367, 36, 270, 16, 0);
-    /* Owner-drawn rather than BS_AUTORADIOBUTTON, for a modern flat
-     * circle+dot look instead of the system theme's radio glyph (see
-     * ODT_BUTTON in WM_DRAWITEM and select_signal_mode() for the manual
-     * check-state/grouping this requires). */
-    add_ctrl(hwnd, "BUTTON", "Pseudo Random Noise", BS_OWNERDRAW | WS_GROUP | WS_TABSTOP, 367, 54, 220, 18, IDC_RB_WHITE);
-    add_ctrl(hwnd, "BUTTON", "Linear Sweep", BS_OWNERDRAW | WS_TABSTOP, 367, 72, 150, 18, IDC_RB_SWEEP);
-    add_ctrl(hwnd, "BUTTON", "Comb Spectrum", BS_OWNERDRAW | WS_TABSTOP, 367, 90, 150, 18, IDC_RB_COMB);
-    add_ctrl(hwnd, "BUTTON", "Continuous Wave", BS_OWNERDRAW | WS_TABSTOP, 367, 108, 150, 18, IDC_RB_SINGLE);
+    /* Pill/segmented selector rather than a radio glyph at all - a stack
+     * of four owner-drawn rounded bars, filled accent when selected,
+     * outlined otherwise (see ODT_BUTTON in WM_DRAWITEM and
+     * select_signal_mode() for the manual check-state/grouping this
+     * requires). Same y positions as before, just full-width and a hair
+     * shorter so a 2px reveal of the panel shows between segments. */
+    add_ctrl(hwnd, "BUTTON", "Pseudo Random Noise", BS_OWNERDRAW | WS_GROUP | WS_TABSTOP, 367, 54, 300, 16, IDC_RB_WHITE);
+    add_ctrl(hwnd, "BUTTON", "Linear Sweep", BS_OWNERDRAW | WS_TABSTOP, 367, 72, 300, 16, IDC_RB_SWEEP);
+    add_ctrl(hwnd, "BUTTON", "Comb Spectrum", BS_OWNERDRAW | WS_TABSTOP, 367, 90, 300, 16, IDC_RB_COMB);
+    add_ctrl(hwnd, "BUTTON", "Continuous Wave", BS_OWNERDRAW | WS_TABSTOP, 367, 108, 300, 16, IDC_RB_SINGLE);
     select_signal_mode(hwnd, IDC_RB_WHITE);
 
     add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 367, 130, 62, 16, 0);
@@ -811,48 +812,36 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (dis->CtlType == ODT_BUTTON &&
                 (dis->CtlID == IDC_RB_WHITE || dis->CtlID == IDC_RB_SWEEP ||
                  dis->CtlID == IDC_RB_COMB || dis->CtlID == IDC_RB_SINGLE)) {
-                /* White-filled circle (closer to the classic radio look,
-                 * easier to read at a glance) with a colored ring and,
-                 * when selected, a colored center dot - own drawing rather
-                 * than the system glyph so it still matches the accent
-                 * palette instead of the OS theme's. */
+                /* Pill/segmented selector - no circle at all. A rounded bar,
+                 * filled solid accent with white text when selected, or
+                 * just an outline with normal text otherwise. */
                 char text[64];
                 bool checked = ((int)dis->CtlID == g_signal_mode);
                 RECT rc = dis->rcItem;
-                RECT text_rc = rc;
-                int diam = 16;
-                int cy = (rc.top + rc.bottom) / 2;
-                int cx = rc.left + diam / 2 + 1;
-                HPEN ring_pen, old_pen;
-                HBRUSH old_brush;
+                int corner = rc.bottom - rc.top;
+                HPEN pen, old_pen;
+                HBRUSH brush, old_brush;
 
                 FillRect(dis->hDC, &rc, g_brush_panel);
 
-                ring_pen = CreatePen(PS_SOLID, 2, checked ? COLOR_APP_ACCENT : COLOR_APP_MUTED);
-                old_pen = (HPEN)SelectObject(dis->hDC, ring_pen);
-                old_brush = (HBRUSH)SelectObject(dis->hDC, g_brush_radio_bg);
-                Ellipse(dis->hDC, cx - diam / 2, cy - diam / 2, cx + diam / 2, cy + diam / 2);
+                pen = CreatePen(PS_SOLID, 1, checked ? COLOR_APP_ACCENT : COLOR_APP_PANEL_BORDER);
+                brush = checked ? g_brush_accent : g_brush_panel;
+                old_pen = (HPEN)SelectObject(dis->hDC, pen);
+                old_brush = (HBRUSH)SelectObject(dis->hDC, brush);
+                RoundRect(dis->hDC, rc.left, rc.top, rc.right, rc.bottom, corner, corner);
                 SelectObject(dis->hDC, old_brush);
                 SelectObject(dis->hDC, old_pen);
-                DeleteObject(ring_pen);
-
-                if (checked) {
-                    int inner = 8;
-                    HPEN old_pen2 = (HPEN)SelectObject(dis->hDC, GetStockObject(NULL_PEN));
-                    HBRUSH old_brush2 = (HBRUSH)SelectObject(dis->hDC, g_brush_accent);
-                    Ellipse(dis->hDC, cx - inner / 2, cy - inner / 2, cx + inner / 2, cy + inner / 2);
-                    SelectObject(dis->hDC, old_brush2);
-                    SelectObject(dis->hDC, old_pen2);
-                }
+                DeleteObject(pen);
 
                 GetWindowTextA(dis->hwndItem, text, sizeof(text));
-                SetTextColor(dis->hDC, COLOR_APP_TEXT);
+                SetTextColor(dis->hDC, checked ? RGB(255, 255, 255) : COLOR_APP_TEXT);
                 SetBkMode(dis->hDC, TRANSPARENT);
-                text_rc.left = cx + diam / 2 + 6;
-                DrawTextA(dis->hDC, text, -1, &text_rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                DrawTextA(dis->hDC, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
                 if (dis->itemState & ODS_FOCUS) {
-                    DrawFocusRect(dis->hDC, &rc);
+                    RECT focus_rc = rc;
+                    InflateRect(&focus_rc, -3, -2);
+                    DrawFocusRect(dis->hDC, &focus_rc);
                 }
                 return TRUE;
             }
@@ -901,9 +890,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (g_brush_dot) {
                 DeleteObject(g_brush_dot);
             }
-            if (g_brush_radio_bg) {
-                DeleteObject(g_brush_radio_bg);
-            }
             if (g_mono_font && g_mono_font != g_font) {
                 DeleteObject(g_mono_font);
             }
@@ -938,7 +924,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     g_brush_accent = CreateSolidBrush(COLOR_APP_ACCENT);
     g_brush_accent_dis = CreateSolidBrush(COLOR_APP_ACCENT_DIS);
     g_brush_dot = CreateSolidBrush(COLOR_APP_DOT);
-    g_brush_radio_bg = CreateSolidBrush(RGB(255, 255, 255));
 
     memset(&wc, 0, sizeof(wc));
     wc.cbSize = sizeof(wc);
