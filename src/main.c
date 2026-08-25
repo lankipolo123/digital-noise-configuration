@@ -84,6 +84,12 @@ static HBRUSH g_brush_accent_dis;
 static Connection g_conn;
 static Device g_device;
 
+/* Which signal-mode radio button (by control id) is currently selected -
+ * tracked manually since owner-drawn radio buttons (used for the modern
+ * circle+dot look) don't get the automatic BS_AUTORADIOBUTTON group
+ * check-state handling. */
+static int g_signal_mode = IDC_RB_WHITE;
+
 static void ui_refresh_status(void);
 static void ui_show_warning(const char *message);
 static void ui_clear_warning(void);
@@ -369,11 +375,11 @@ static void on_apply_clicked(void) {
     ProtoStatus status;
     bool bw_unconfirmed;
 
-    if (IsDlgButtonChecked(g_hwnd, IDC_RB_WHITE) == BST_CHECKED) {
+    if (g_signal_mode == IDC_RB_WHITE) {
         mode = PROTO_MODE_WHITE_NOISE;
-    } else if (IsDlgButtonChecked(g_hwnd, IDC_RB_SWEEP) == BST_CHECKED) {
+    } else if (g_signal_mode == IDC_RB_SWEEP) {
         mode = PROTO_MODE_LINEAR_SWEEP;
-    } else if (IsDlgButtonChecked(g_hwnd, IDC_RB_COMB) == BST_CHECKED) {
+    } else if (g_signal_mode == IDC_RB_COMB) {
         mode = PROTO_MODE_COMB_SPECTRUM;
     } else {
         mode = PROTO_MODE_SINGLE;
@@ -402,6 +408,18 @@ static void on_apply_clicked(void) {
     status = device_apply_signal_settings(&g_device, mode, (uint16_t)freq, (uint16_t)bw_mhz, power_db);
     if (status != PROTO_OK) {
         MessageBoxA(g_hwnd, "Invalid settings", "Invalid settings", MB_OK | MB_ICONWARNING);
+    }
+}
+
+/* Selects one signal-mode radio (owner-drawn, so "checked" is just our own
+ * g_signal_mode id rather than anything the button control tracks itself)
+ * and repaints all four so the previous selection's dot clears. */
+static void select_signal_mode(HWND hwnd, int id) {
+    static const int ids[4] = { IDC_RB_WHITE, IDC_RB_SWEEP, IDC_RB_COMB, IDC_RB_SINGLE };
+    unsigned i;
+    g_signal_mode = id;
+    for (i = 0; i < 4; i++) {
+        InvalidateRect(GetDlgItem(hwnd, ids[i]), NULL, TRUE);
     }
 }
 
@@ -459,11 +477,15 @@ static void build_controls(HWND hwnd) {
     add_panel(hwnd, 355, 6, 335, 204);
     add_header(hwnd, "Signal Settings", 367, 14, 300, 18);
     add_ctrl(hwnd, "STATIC", "Mode:", SS_LEFT, 367, 36, 270, 16, 0);
-    add_ctrl(hwnd, "BUTTON", "Pseudo Random Noise", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 367, 54, 220, 18, IDC_RB_WHITE);
-    add_ctrl(hwnd, "BUTTON", "Linear Sweep", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 72, 150, 18, IDC_RB_SWEEP);
-    add_ctrl(hwnd, "BUTTON", "Comb Spectrum", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 90, 150, 18, IDC_RB_COMB);
-    add_ctrl(hwnd, "BUTTON", "Continuous Wave", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 108, 150, 18, IDC_RB_SINGLE);
-    CheckDlgButton(hwnd, IDC_RB_WHITE, BST_CHECKED);
+    /* Owner-drawn rather than BS_AUTORADIOBUTTON, for a modern flat
+     * circle+dot look instead of the system theme's radio glyph (see
+     * ODT_BUTTON in WM_DRAWITEM and select_signal_mode() for the manual
+     * check-state/grouping this requires). */
+    add_ctrl(hwnd, "BUTTON", "Pseudo Random Noise", BS_OWNERDRAW | WS_GROUP | WS_TABSTOP, 367, 54, 220, 18, IDC_RB_WHITE);
+    add_ctrl(hwnd, "BUTTON", "Linear Sweep", BS_OWNERDRAW | WS_TABSTOP, 367, 72, 150, 18, IDC_RB_SWEEP);
+    add_ctrl(hwnd, "BUTTON", "Comb Spectrum", BS_OWNERDRAW | WS_TABSTOP, 367, 90, 150, 18, IDC_RB_COMB);
+    add_ctrl(hwnd, "BUTTON", "Continuous Wave", BS_OWNERDRAW | WS_TABSTOP, 367, 108, 150, 18, IDC_RB_SINGLE);
+    select_signal_mode(hwnd, IDC_RB_WHITE);
 
     add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 367, 130, 62, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 431, 128, 140, 140, IDC_BW_COMBO);
@@ -700,6 +722,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 }
                 case IDC_APPLY_BTN: on_apply_clicked(); break;
                 case IDC_READ_BTN: device_read_status(&g_device); break;
+                case IDC_RB_WHITE:
+                case IDC_RB_SWEEP:
+                case IDC_RB_COMB:
+                case IDC_RB_SINGLE:
+                    select_signal_mode(hwnd, id);
+                    break;
                 default: break;
             }
             return 0;
@@ -764,6 +792,53 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         case WM_DRAWITEM: {
             DRAWITEMSTRUCT *dis = (DRAWITEMSTRUCT *)lParam;
+            if (dis->CtlType == ODT_BUTTON &&
+                (dis->CtlID == IDC_RB_WHITE || dis->CtlID == IDC_RB_SWEEP ||
+                 dis->CtlID == IDC_RB_COMB || dis->CtlID == IDC_RB_SINGLE)) {
+                /* Modern flat radio: an outline circle, filled with a
+                 * smaller accent dot when selected, label to its right -
+                 * replaces the system radio glyph, which doesn't follow
+                 * the dark theme. */
+                char text[64];
+                bool checked = ((int)dis->CtlID == g_signal_mode);
+                RECT rc = dis->rcItem;
+                RECT text_rc = rc;
+                int diam = 14;
+                int cy = (rc.top + rc.bottom) / 2;
+                int cx = rc.left + diam / 2 + 1;
+                HPEN ring_pen, old_pen;
+                HBRUSH old_brush;
+
+                FillRect(dis->hDC, &rc, g_brush_panel);
+
+                ring_pen = CreatePen(PS_SOLID, 2, checked ? COLOR_APP_ACCENT : COLOR_APP_MUTED);
+                old_pen = (HPEN)SelectObject(dis->hDC, ring_pen);
+                old_brush = (HBRUSH)SelectObject(dis->hDC, g_brush_field);
+                Ellipse(dis->hDC, cx - diam / 2, cy - diam / 2, cx + diam / 2, cy + diam / 2);
+                SelectObject(dis->hDC, old_brush);
+                SelectObject(dis->hDC, old_pen);
+                DeleteObject(ring_pen);
+
+                if (checked) {
+                    int inner = 6;
+                    HPEN old_pen2 = (HPEN)SelectObject(dis->hDC, GetStockObject(NULL_PEN));
+                    HBRUSH old_brush2 = (HBRUSH)SelectObject(dis->hDC, g_brush_accent);
+                    Ellipse(dis->hDC, cx - inner / 2, cy - inner / 2, cx + inner / 2, cy + inner / 2);
+                    SelectObject(dis->hDC, old_brush2);
+                    SelectObject(dis->hDC, old_pen2);
+                }
+
+                GetWindowTextA(dis->hwndItem, text, sizeof(text));
+                SetTextColor(dis->hDC, COLOR_APP_TEXT);
+                SetBkMode(dis->hDC, TRANSPARENT);
+                text_rc.left = cx + diam / 2 + 6;
+                DrawTextA(dis->hDC, text, -1, &text_rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+                if (dis->itemState & ODS_FOCUS) {
+                    DrawFocusRect(dis->hDC, &rc);
+                }
+                return TRUE;
+            }
             if (dis->CtlType == ODT_BUTTON) {
                 char text[64];
                 bool disabled = (dis->itemState & ODS_DISABLED) != 0;
