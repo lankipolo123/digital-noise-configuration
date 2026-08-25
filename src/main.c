@@ -150,32 +150,38 @@ static LRESULT CALLBACK panel_subclass_proc(HWND hwnd, UINT msg, WPARAM wParam, 
         SelectObject(hdc, old_pen);
         DeleteObject(pen);
 
-        /* Fill each chamfered corner's cut-off triangle with silver,
-         * instead of leaving it as bare page background - a small metal
-         * corner-bracket accent at all four corners. */
-        silver_pen = CreatePen(PS_SOLID, 1, COLOR_APP_SILVER);
-        old_silver_pen = (HPEN)SelectObject(hdc, silver_pen);
-        SelectObject(hdc, g_brush_silver);
+        /* A small silver triangle floating near each corner, inset from
+         * the panel's chamfer edge rather than flush against it - leaves
+         * a visible gap of bare page background between the accent and
+         * the border instead of the triangle sticking directly to it. */
+        {
+            int t = c - 4; /* smaller than the chamfer cut itself, so it
+                             * doesn't reach the chamfer's diagonal edge */
 
-        tri[0].x = rc.left;       tri[0].y = rc.top;
-        tri[1].x = rc.left + c;   tri[1].y = rc.top;
-        tri[2].x = rc.left;       tri[2].y = rc.top + c;
-        Polygon(hdc, tri, 3);
+            silver_pen = CreatePen(PS_SOLID, 1, COLOR_APP_SILVER);
+            old_silver_pen = (HPEN)SelectObject(hdc, silver_pen);
+            SelectObject(hdc, g_brush_silver);
 
-        tri[0].x = rc.right - 1;      tri[0].y = rc.top;
-        tri[1].x = rc.right - 1 - c;  tri[1].y = rc.top;
-        tri[2].x = rc.right - 1;      tri[2].y = rc.top + c;
-        Polygon(hdc, tri, 3);
+            tri[0].x = rc.left;       tri[0].y = rc.top;
+            tri[1].x = rc.left + t;   tri[1].y = rc.top;
+            tri[2].x = rc.left;       tri[2].y = rc.top + t;
+            Polygon(hdc, tri, 3);
 
-        tri[0].x = rc.right - 1;      tri[0].y = rc.bottom - 1;
-        tri[1].x = rc.right - 1 - c;  tri[1].y = rc.bottom - 1;
-        tri[2].x = rc.right - 1;      tri[2].y = rc.bottom - 1 - c;
-        Polygon(hdc, tri, 3);
+            tri[0].x = rc.right - 1;      tri[0].y = rc.top;
+            tri[1].x = rc.right - 1 - t;  tri[1].y = rc.top;
+            tri[2].x = rc.right - 1;      tri[2].y = rc.top + t;
+            Polygon(hdc, tri, 3);
 
-        tri[0].x = rc.left;       tri[0].y = rc.bottom - 1;
-        tri[1].x = rc.left + c;   tri[1].y = rc.bottom - 1;
-        tri[2].x = rc.left;       tri[2].y = rc.bottom - 1 - c;
-        Polygon(hdc, tri, 3);
+            tri[0].x = rc.right - 1;      tri[0].y = rc.bottom - 1;
+            tri[1].x = rc.right - 1 - t;  tri[1].y = rc.bottom - 1;
+            tri[2].x = rc.right - 1;      tri[2].y = rc.bottom - 1 - t;
+            Polygon(hdc, tri, 3);
+
+            tri[0].x = rc.left;       tri[0].y = rc.bottom - 1;
+            tri[1].x = rc.left + t;   tri[1].y = rc.bottom - 1;
+            tri[2].x = rc.left;       tri[2].y = rc.bottom - 1 - t;
+            Polygon(hdc, tri, 3);
+        }
 
         SelectObject(hdc, old_silver_pen);
         DeleteObject(silver_pen);
