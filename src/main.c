@@ -367,7 +367,7 @@ static void on_apply_clicked(void) {
     uint8_t mode;
     int freq, bw_idx, bw_mhz, power_idx, power_db;
     ProtoStatus status;
-    bool mode_unconfirmed, bw_unconfirmed;
+    bool bw_unconfirmed;
 
     if (IsDlgButtonChecked(g_hwnd, IDC_RB_WHITE) == BST_CHECKED) {
         mode = PROTO_MODE_WHITE_NOISE;
@@ -387,16 +387,13 @@ static void on_apply_clicked(void) {
     power_idx = (int)SendDlgItemMessageA(g_hwnd, IDC_POWER_COMBO, CB_GETCURSEL, 0, 0);
     power_db = (int)SendDlgItemMessageA(g_hwnd, IDC_POWER_COMBO, CB_GETITEMDATA, (WPARAM)power_idx, 0);
 
-    mode_unconfirmed = (mode == PROTO_MODE_SINGLE);
     bw_unconfirmed = (bw_mhz == BANDWIDTH_UNCONFIRMED_MHZ);
 
-    if (mode_unconfirmed || bw_unconfirmed) {
+    if (bw_unconfirmed) {
         char msg[256];
-        const char *what = (mode_unconfirmed && bw_unconfirmed) ? "modulation mode and bandwidth"
-                            : mode_unconfirmed ? "modulation mode" : "bandwidth";
         wsprintfA(msg,
-                  "The selected %s uses a guessed protocol byte value that hasn't been "
-                  "verified against real hardware. Send anyway?", what);
+                  "The selected bandwidth uses a guessed protocol byte value that hasn't been "
+                  "verified against real hardware. Send anyway?");
         if (MessageBoxA(g_hwnd, msg, "Unconfirmed value", MB_YESNO | MB_ICONWARNING) != IDYES) {
             return;
         }
@@ -465,7 +462,7 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "BUTTON", "Pseudo Random Noise", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP, 367, 54, 220, 18, IDC_RB_WHITE);
     add_ctrl(hwnd, "BUTTON", "Linear Sweep", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 72, 150, 18, IDC_RB_SWEEP);
     add_ctrl(hwnd, "BUTTON", "Comb Spectrum", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 90, 150, 18, IDC_RB_COMB);
-    add_ctrl(hwnd, "BUTTON", "Continuous Wave (unconfirmed)", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 108, 300, 18, IDC_RB_SINGLE);
+    add_ctrl(hwnd, "BUTTON", "Continuous Wave", BS_AUTORADIOBUTTON | WS_TABSTOP, 367, 108, 150, 18, IDC_RB_SINGLE);
     CheckDlgButton(hwnd, IDC_RB_WHITE, BST_CHECKED);
 
     add_ctrl(hwnd, "STATIC", "Bandwidth:", SS_LEFT, 367, 130, 62, 16, 0);
