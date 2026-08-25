@@ -64,7 +64,7 @@ static const int STEP_OPTIONS[] = { 1, 10, 50, 100 };
  * WM_ERASEBKGND, before any panel paints on top of it - panels are opaque
  * across their full rect, so the dots end up visible only in the gaps
  * around the sections, never inside one. */
-#define DOT_GRID_SPACING 14
+#define DOT_GRID_SPACING 8
 #define DOT_GRID_SIZE 2
 
 static HINSTANCE g_hinst;
