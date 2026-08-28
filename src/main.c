@@ -1,4 +1,4 @@
-/* TX Lite - single-page Win32 UI over connection.h/device.h.
+/* Digital Noise Configuration - single-page Win32 UI over connection.h/device.h.
  * Consolidates sdr_controller's Dashboard + Device Control pages (minus the
  * Communication page's terminal log / activity chart) into one window.
  * No Qt, no pywebview, no vendor DLL - just user32/gdi32/kernel32/advapi32.
@@ -501,7 +501,7 @@ static bool show_confirm_dialog(HWND parent, const char *message) {
         wc.hInstance = g_hinst;
         wc.hCursor = LoadCursorA(NULL, IDC_ARROW);
         wc.hbrBackground = g_brush_page;
-        wc.lpszClassName = "TxLiteConfirmDialog";
+        wc.lpszClassName = "DigitalNoiseConfigConfirmDialog";
         RegisterClassExA(&wc);
         g_confirm_class_registered = true;
     }
@@ -523,7 +523,7 @@ static bool show_confirm_dialog(HWND parent, const char *message) {
     g_confirm_message = message;
 
     EnableWindow(parent, FALSE);
-    popup = CreateWindowExA(ex_style, "TxLiteConfirmDialog", "Confirm", style,
+    popup = CreateWindowExA(ex_style, "DigitalNoiseConfigConfirmDialog", "Confirm", style,
                              x, y, wrc.right - wrc.left, wrc.bottom - wrc.top,
                              parent, NULL, g_hinst, NULL);
     if (popup) {
@@ -1243,7 +1243,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
     wc.hCursor = LoadCursorA(NULL, IDC_ARROW);
     wc.hbrBackground = g_brush_page;
-    wc.lpszClassName = "TxLiteMainWindow";
+    wc.lpszClassName = "DigitalNoiseConfigMainWindow";
     RegisterClassExA(&wc);
 
     rect.left = 0;
@@ -1252,7 +1252,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     rect.bottom = CLIENT_HEIGHT;
     AdjustWindowRectEx(&rect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE, 0);
 
-    hwnd = CreateWindowExA(0, "TxLiteMainWindow", "TX Lite",
+    hwnd = CreateWindowExA(0, "DigitalNoiseConfigMainWindow", "Digital Noise Configuration",
                             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
                             CW_USEDEFAULT, CW_USEDEFAULT,
                             rect.right - rect.left, rect.bottom - rect.top,
