@@ -784,7 +784,7 @@ static void build_controls(HWND hwnd) {
     add_header(hwnd, "Address && Output", 42, 160, 280, 18);
     add_ctrl(hwnd, "STATIC", "Address:", SS_LEFT, 22, 182, 52, 16, 0);
     add_ctrl(hwnd, "EDIT", "-", WS_BORDER | ES_NUMBER, 76, 180, 50, 20, IDC_ADDR_EDIT);
-    add_ctrl(hwnd, "BUTTON", "Query", BS_OWNERDRAW | WS_TABSTOP, 132, 180, 60, 22, IDC_QUERY_ADDR_BTN);
+    add_ctrl(hwnd, "BUTTON", "Parse", BS_OWNERDRAW | WS_TABSTOP, 132, 180, 60, 22, IDC_QUERY_ADDR_BTN);
     add_ctrl(hwnd, "BUTTON", "Set", BS_OWNERDRAW | WS_TABSTOP, 198, 180, 50, 22, IDC_SET_ADDR_BTN);
     add_ctrl(hwnd, "BUTTON", "Output ON", BS_AUTOCHECKBOX | WS_TABSTOP, 22, 206, 110, 20, IDC_OUTPUT_CHECK);
     add_ctrl(hwnd, "STATIC", "OFF", SS_CENTER, 150, 206, 50, 20, IDC_OUTPUT_PILL);
