@@ -72,6 +72,7 @@ static HINSTANCE g_hinst;
 static HWND g_hwnd;
 static HFONT g_font;
 static HFONT g_mono_font;
+static HFONT g_hex_font;
 static HFONT g_header_font;
 static WNDPROC g_panel_orig_proc;
 static HBRUSH g_brush_warn;
@@ -82,7 +83,6 @@ static HBRUSH g_brush_field;
 static HBRUSH g_brush_accent;
 static HBRUSH g_brush_accent_dis;
 static HBRUSH g_brush_silver;
-static HBRUSH g_brush_light;
 
 /* Raw bytes behind the TX/RX hex-box readouts (see add_hexbox). */
 static uint8_t g_tx_bytes[16];
@@ -335,13 +335,10 @@ static void draw_dot_grid(HDC hdc, const RECT *rc) {
     }
 }
 
-/* Hex-box readout: each byte gets its own bordered box (light grey fill,
- * dark border, dark mono text) instead of one flat text string - a
- * segmented look like a row of cells rather than a plain input line.
- * Used for TX/RX; the control's id picks which byte buffer to draw
+/* Hex readout: plain space-separated hex text on the panel background,
+ * no per-byte fill or border - just a flat line of mono text. Used for
+ * TX/RX; the control's id picks which byte buffer to draw
  * (g_tx_bytes/g_tx_len or g_rx_bytes/g_rx_len). */
-#define HEXBOX_W 16
-#define HEXBOX_GAP 2
 static LRESULT CALLBACK hexbox_subclass_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_ERASEBKGND) {
         return 1;
@@ -352,7 +349,8 @@ static LRESULT CALLBACK hexbox_subclass_proc(HWND hwnd, UINT msg, WPARAM wParam,
         RECT rc;
         HFONT old_font;
         const uint8_t *data;
-        int len, i, x, id;
+        char text[256];
+        int len, i, pos, id;
 
         hdc = BeginPaint(hwnd, &ps);
         GetClientRect(hwnd, &rc);
@@ -367,24 +365,16 @@ static LRESULT CALLBACK hexbox_subclass_proc(HWND hwnd, UINT msg, WPARAM wParam,
             len = g_rx_len;
         }
 
-        old_font = (HFONT)SelectObject(hdc, g_mono_font);
-        SetTextColor(hdc, RGB(30, 31, 33));
-        SetBkMode(hdc, TRANSPARENT);
-
-        x = rc.left;
-        for (i = 0; i < len && x + HEXBOX_W <= rc.right; i++) {
-            char text[4];
-            RECT box;
-            box.left = x;
-            box.top = rc.top;
-            box.right = x + HEXBOX_W;
-            box.bottom = rc.bottom;
-            FillRect(hdc, &box, g_brush_light);
-            wsprintfA(text, "%02X", data[i]);
-            DrawTextA(hdc, text, -1, &box, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-            x += HEXBOX_W + HEXBOX_GAP;
+        pos = 0;
+        for (i = 0; i < len && pos < (int)sizeof(text) - 4; i++) {
+            pos += wsprintfA(text + pos, i ? " %02X" : "%02X", data[i]);
         }
+        text[pos] = '\0';
 
+        old_font = (HFONT)SelectObject(hdc, g_hex_font);
+        SetTextColor(hdc, COLOR_APP_TEXT);
+        SetBkMode(hdc, TRANSPARENT);
+        DrawTextA(hdc, text, -1, &rc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         SelectObject(hdc, old_font);
 
         EndPaint(hwnd, &ps);
@@ -951,6 +941,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 g_mono_font = g_font;
             }
 
+            /* Smaller than g_mono_font - the TX/RX hex readout needs a
+             * full ~15-byte frame (STOP marker included) to fit as plain
+             * text in a fixed-width control; -13pt clips it. */
+            g_hex_font = CreateFontA(-10, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                      ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                      DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, "Courier New");
+            if (!g_hex_font) {
+                g_hex_font = g_mono_font;
+            }
+
             /* Bold variant of the same face/size as g_font, used for
              * section title labels (see add_header()). */
             {
@@ -1183,11 +1183,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (g_brush_silver) {
                 DeleteObject(g_brush_silver);
             }
-            if (g_brush_light) {
-                DeleteObject(g_brush_light);
-            }
             if (g_mono_font && g_mono_font != g_font) {
                 DeleteObject(g_mono_font);
+            }
+            if (g_hex_font && g_hex_font != g_mono_font && g_hex_font != g_font) {
+                DeleteObject(g_hex_font);
             }
             if (g_header_font && g_header_font != g_font) {
                 DeleteObject(g_header_font);
@@ -1221,7 +1221,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     g_brush_accent_dis = CreateSolidBrush(COLOR_APP_ACCENT_DIS);
     g_brush_dot = CreateSolidBrush(COLOR_APP_DOT);
     g_brush_silver = CreateSolidBrush(COLOR_APP_SILVER);
-    g_brush_light = CreateSolidBrush(RGB(230, 231, 233));
 
     memset(&wc, 0, sizeof(wc));
     wc.cbSize = sizeof(wc);
