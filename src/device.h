@@ -20,6 +20,9 @@
 typedef struct {
     bool connected;
     uint8_t address;
+    bool address_known; /* false until a real Address Query/Set response
+                          * has actually confirmed it - the address field
+                          * shows "-" rather than a possibly-wrong 0. */
     bool output_on;
     int mode;          /* DEVICE_UNKNOWN or PROTO_MODE_* */
     int frequency_mhz; /* DEVICE_UNKNOWN or a real MHz value */

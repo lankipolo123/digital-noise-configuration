@@ -159,6 +159,7 @@ void device_on_frame(const ProtoParsedFrame *frame, void *ctx) {
                         break;
                     case PENDING_ADDR_SET:
                         dev->state.address = pending.addr_new;
+                        dev->state.address_known = true;
                         break;
                     default:
                         break;
@@ -194,6 +195,7 @@ void device_on_frame(const ProtoParsedFrame *frame, void *ctx) {
         dev->state.power_db = (pw_db != -1) ? pw_db : DEVICE_UNKNOWN;
     } else if (frame->type == PROTO_TYPE_ADDR_QUERY && frame->buf_len == 1) {
         dev->state.address = frame->buf[0];
+        dev->state.address_known = true;
     }
 
     device_notify(dev);

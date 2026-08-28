@@ -598,9 +598,14 @@ static void ui_refresh_status(void) {
     CheckDlgButton(g_hwnd, IDC_OUTPUT_CHECK, s->output_on ? BST_CHECKED : BST_UNCHECKED);
 
     /* Don't clobber the address box while the user is mid-edit, matching
-     * the reference's hasFocus() guard. */
+     * the reference's hasFocus() guard. Shows "-" (not a possibly-wrong 0)
+     * until a real Address Query/Set response has actually confirmed it. */
     if (GetFocus() != GetDlgItem(g_hwnd, IDC_ADDR_EDIT)) {
-        SetDlgItemInt(g_hwnd, IDC_ADDR_EDIT, s->address, FALSE);
+        if (s->address_known) {
+            SetDlgItemInt(g_hwnd, IDC_ADDR_EDIT, s->address, FALSE);
+        } else {
+            SetDlgItemTextA(g_hwnd, IDC_ADDR_EDIT, "-");
+        }
     }
 
     InvalidateRect(GetDlgItem(g_hwnd, IDC_CONN_STATUS_LBL), NULL, TRUE);
@@ -776,7 +781,7 @@ static void build_controls(HWND hwnd) {
     add_header_icon(hwnd, 22, 160, ICON_BARS);
     add_header(hwnd, "Address && Output", 42, 160, 280, 18);
     add_ctrl(hwnd, "STATIC", "Address:", SS_LEFT, 22, 182, 52, 16, 0);
-    add_ctrl(hwnd, "EDIT", "0", WS_BORDER | ES_NUMBER, 76, 180, 50, 20, IDC_ADDR_EDIT);
+    add_ctrl(hwnd, "EDIT", "-", WS_BORDER | ES_NUMBER, 76, 180, 50, 20, IDC_ADDR_EDIT);
     add_ctrl(hwnd, "BUTTON", "Query", BS_OWNERDRAW | WS_TABSTOP, 132, 180, 60, 22, IDC_QUERY_ADDR_BTN);
     add_ctrl(hwnd, "BUTTON", "Set", BS_OWNERDRAW | WS_TABSTOP, 198, 180, 50, 22, IDC_SET_ADDR_BTN);
     add_ctrl(hwnd, "BUTTON", "Output ON", BS_AUTOCHECKBOX | WS_TABSTOP, 22, 206, 110, 20, IDC_OUTPUT_CHECK);
@@ -832,6 +837,7 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "BUTTON", "Lock", BS_AUTOCHECKBOX | WS_TABSTOP, 234, 273, 55, 18, IDC_FREQ_LOCK_CHECK);
     add_ctrl(hwnd, "STATIC", "Step:", SS_LEFT, 22, 298, 32, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 296, 80, 100, IDC_STEP_COMBO);
+    add_ctrl(hwnd, "BUTTON", "Read Freq", BS_OWNERDRAW | WS_TABSTOP, 144, 296, 98, 22, IDC_FREQ_READ_BTN);
     add_ctrl(hwnd, "BUTTON", "Apply", BS_OWNERDRAW | WS_TABSTOP, 250, 296, 65, 22, IDC_FREQ_APPLY_BTN);
 
     /* Frequency starts locked - editing it is a real RF-output-affecting
@@ -1070,7 +1076,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     }
                     break;
                 }
-                case IDC_READ_BTN: device_read_status(&g_device); break;
+                case IDC_READ_BTN:
+                case IDC_FREQ_READ_BTN:
+                    /* No protocol command reads frequency alone - this
+                     * sends the same Status Query as Read Device, just
+                     * reachable from the Frequency panel. The response
+                     * lands in the Frequency field itself via
+                     * ui_refresh_status(). */
+                    device_read_status(&g_device);
+                    break;
                 default: break;
             }
             return 0;
