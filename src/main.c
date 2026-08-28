@@ -38,8 +38,6 @@ static const int STEP_OPTIONS[] = { 1, 10, 50, 100 };
 #define STEP_OPTIONS_COUNT 4
 #define STEP_DEFAULT_INDEX 1 /* 10 MHz */
 
-#define DEFAULT_FREQUENCY_MHZ 2450
-
 /* MILITRONIX Dark palette: the real brand colors (charcoal + the logo's
  * blue) in dark shades - dark charcoal page/panels, light text, the same
  * blue family on buttons, a brighter blue for panel titles so they pop
@@ -582,16 +580,20 @@ static void ui_refresh_status(void) {
 
     SetDlgItemTextA(g_hwnd, IDC_CONN_STATUS_LBL, s->connected ? "Connected" : "Disconnected");
 
+    /* Don't clobber the frequency edit while the user is mid-edit, same
+     * guard as the address box below. Shows "-" (not a hardcoded guess)
+     * until a real status response has actually confirmed it. */
     if (s->frequency_mhz != DEVICE_UNKNOWN) {
         wsprintfA(buf, "%d MHz", s->frequency_mhz);
         SetDlgItemTextA(g_hwnd, IDC_OUTPUT_FREQ_LBL, buf);
-        /* Don't clobber the frequency edit while the user is mid-edit,
-         * same guard as the address box below. */
         if (GetFocus() != GetDlgItem(g_hwnd, IDC_FREQ_EDIT)) {
             SetDlgItemInt(g_hwnd, IDC_FREQ_EDIT, (UINT)s->frequency_mhz, FALSE);
         }
     } else {
         SetDlgItemTextA(g_hwnd, IDC_OUTPUT_FREQ_LBL, "-");
+        if (GetFocus() != GetDlgItem(g_hwnd, IDC_FREQ_EDIT)) {
+            SetDlgItemTextA(g_hwnd, IDC_FREQ_EDIT, "-");
+        }
     }
 
     SetDlgItemTextA(g_hwnd, IDC_OUTPUT_PILL, s->output_on ? "ON" : "OFF");
@@ -827,9 +829,7 @@ static void build_controls(HWND hwnd) {
     add_header(hwnd, "Frequency", 42, 252, 280, 18);
     add_ctrl(hwnd, "STATIC", "Frequency:", SS_LEFT, 22, 274, 64, 16, 0);
     {
-        char freq_label[8];
-        wsprintfA(freq_label, "%d", DEFAULT_FREQUENCY_MHZ);
-        add_ctrl(hwnd, "EDIT", freq_label, WS_BORDER | ES_NUMBER, 90, 272, 55, 20, IDC_FREQ_EDIT);
+        add_ctrl(hwnd, "EDIT", "-", WS_BORDER | ES_NUMBER, 90, 272, 55, 20, IDC_FREQ_EDIT);
     }
     add_ctrl(hwnd, "STATIC", "MHz", SS_LEFT, 148, 274, 28, 16, 0);
     add_ctrl(hwnd, "BUTTON", "-", BS_OWNERDRAW | WS_TABSTOP, 180, 272, 24, 20, IDC_FREQ_MINUS_BTN);
