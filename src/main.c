@@ -351,8 +351,6 @@ static LRESULT CALLBACK hexbox_subclass_proc(HWND hwnd, UINT msg, WPARAM wParam,
         HDC hdc;
         RECT rc;
         HFONT old_font;
-        HPEN border_pen, old_pen;
-        HBRUSH old_brush;
         const uint8_t *data;
         int len, i, x, id;
 
@@ -370,9 +368,6 @@ static LRESULT CALLBACK hexbox_subclass_proc(HWND hwnd, UINT msg, WPARAM wParam,
         }
 
         old_font = (HFONT)SelectObject(hdc, g_mono_font);
-        border_pen = CreatePen(PS_SOLID, 1, RGB(150, 152, 156));
-        old_pen = (HPEN)SelectObject(hdc, border_pen);
-        old_brush = (HBRUSH)SelectObject(hdc, g_brush_light);
         SetTextColor(hdc, RGB(30, 31, 33));
         SetBkMode(hdc, TRANSPARENT);
 
@@ -384,15 +379,12 @@ static LRESULT CALLBACK hexbox_subclass_proc(HWND hwnd, UINT msg, WPARAM wParam,
             box.top = rc.top;
             box.right = x + HEXBOX_W;
             box.bottom = rc.bottom;
-            Rectangle(hdc, box.left, box.top, box.right, box.bottom);
+            FillRect(hdc, &box, g_brush_light);
             wsprintfA(text, "%02X", data[i]);
             DrawTextA(hdc, text, -1, &box, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
             x += HEXBOX_W + HEXBOX_GAP;
         }
 
-        SelectObject(hdc, old_brush);
-        SelectObject(hdc, old_pen);
-        DeleteObject(border_pen);
         SelectObject(hdc, old_font);
 
         EndPaint(hwnd, &ps);
