@@ -340,8 +340,8 @@ static void draw_dot_grid(HDC hdc, const RECT *rc) {
  * segmented look like a row of cells rather than a plain input line.
  * Used for TX/RX; the control's id picks which byte buffer to draw
  * (g_tx_bytes/g_tx_len or g_rx_bytes/g_rx_len). */
-#define HEXBOX_W 24
-#define HEXBOX_GAP 3
+#define HEXBOX_W 16
+#define HEXBOX_GAP 2
 static LRESULT CALLBACK hexbox_subclass_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_ERASEBKGND) {
         return 1;
@@ -870,10 +870,13 @@ static void build_controls(HWND hwnd) {
     add_panel(hwnd, 355, 218, 335, 110);
     add_header_icon(hwnd, 367, 226, ICON_ARROWS);
     add_header(hwnd, "TX / RX", 387, 226, 280, 18);
+    /* Widened to 288 (fits 16 boxes at the new tighter pitch) so a full
+     * PROTO_MAX_FRAME-sized frame - STOP bytes included - always fits
+     * instead of getting clipped off the end. */
     add_ctrl(hwnd, "STATIC", "TX:", SS_LEFT, 367, 248, 26, 16, 0);
-    add_hexbox(hwnd, 393, 246, 270, 22, IDC_TX_EDIT);
+    add_hexbox(hwnd, 393, 246, 288, 22, IDC_TX_EDIT);
     add_ctrl(hwnd, "STATIC", "RX:", SS_LEFT, 367, 272, 26, 16, 0);
-    add_hexbox(hwnd, 393, 270, 270, 22, IDC_RX_EDIT);
+    add_hexbox(hwnd, 393, 270, 288, 22, IDC_RX_EDIT);
     /* left column bottom = 244 + 84 = 328; right column bottom = 218 + 110 = 328 */
 
     /* Warning banner lives below both columns, on the page rather than
