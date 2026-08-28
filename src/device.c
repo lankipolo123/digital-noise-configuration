@@ -204,14 +204,10 @@ void device_on_frame(const ProtoParsedFrame *frame, void *ctx) {
 void device_on_connected_changed(bool connected, void *ctx) {
     Device *dev = (Device *)ctx;
     dev->state.connected = connected;
-    if (connected) {
-        /* Trust the address the hardware reports over whatever was last
-         * saved locally - the module can be reassigned externally (DIP
-         * switches, another instance of this app) between runs. */
-        device_query_address(dev);
-    } else {
-        device_notify(dev);
-    }
+    /* No auto-query on connect - the address (and everything else) stays
+     * "-" until the user explicitly hits Query/Read, rather than silently
+     * populating itself the moment a connection opens. */
+    device_notify(dev);
 }
 
 void device_poll_timeout(Device *dev) {
