@@ -8,7 +8,6 @@
  * same as the single-channel app.
  */
 #include <windows.h>
-#include <commctrl.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
@@ -16,8 +15,8 @@
 #include "connection.h"
 #include "channels.h"
 
-#define CLIENT_WIDTH  1030
-#define CLIENT_HEIGHT 710
+#define CLIENT_WIDTH  740
+#define CLIENT_HEIGHT 596
 
 static const int BAUD_OPTIONS[] = { 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 2000000 };
 #define BAUD_OPTIONS_COUNT 9
@@ -32,6 +31,7 @@ static const char PARITY_CODES[] = { 'N', 'O', 'E', 'M', 'S' };
 #define PARITY_OPTIONS_COUNT 5
 
 static const char *const LEVEL_LABELS[] = { "Off", "Low", "Medium", "High" };
+#define LEVEL_OPTIONS_COUNT 4
 
 /* MILITRONIX Dark palette - same as the single-channel app. */
 #define COLOR_APP_PAGE_BG   RGB(32, 33, 36)
@@ -54,8 +54,8 @@ static const char *const LEVEL_LABELS[] = { "Off", "Low", "Medium", "High" };
 /* --- grid layout for the 16 channel cards --- */
 #define GRID_COLS 4
 #define GRID_ROWS 4
-#define CARD_W 246
-#define CARD_H 130
+#define CARD_W 170
+#define CARD_H 100
 #define CARD_GAP 8
 #define GRID_LEFT 10
 #define GRID_TOP 152
@@ -72,8 +72,6 @@ static HBRUSH g_brush_accent;
 static HBRUSH g_brush_accent_dis;
 static HBRUSH g_brush_dot;
 static HBRUSH g_brush_warn;
-static HBRUSH g_brush_connected;
-static HBRUSH g_brush_disconnected;
 
 static Connection g_conn;
 
@@ -239,36 +237,10 @@ static void on_connect_clicked(void) {
 
 /* ---- channel card UI ---- */
 
-static int channel_mode_id(int idx)       { return IDC_CH_BASE + idx * IDC_CH_STRIDE + IDC_CH_MODE_OFFSET; }
-static int channel_set_id(int idx)        { return IDC_CH_BASE + idx * IDC_CH_STRIDE + IDC_CH_SET_OFFSET; }
-static int channel_on_id(int idx)         { return IDC_CH_BASE + idx * IDC_CH_STRIDE + IDC_CH_ON_OFFSET; }
-static int channel_off_id(int idx)        { return IDC_CH_BASE + idx * IDC_CH_STRIDE + IDC_CH_OFF_OFFSET; }
-static int channel_status_id(int idx)     { return IDC_CH_BASE + idx * IDC_CH_STRIDE + IDC_CH_STATUS_OFFSET; }
-static int channel_track_id(int idx)      { return IDC_CH_BASE + idx * IDC_CH_STRIDE + IDC_CH_TRACKBAR_OFFSET; }
-static int channel_lbl_high_id(int idx)   { return IDC_CH_BASE + idx * IDC_CH_STRIDE + IDC_CH_LBL_HIGH_OFFSET; }
-static int channel_lbl_medium_id(int idx) { return IDC_CH_BASE + idx * IDC_CH_STRIDE + IDC_CH_LBL_MEDIUM_OFFSET; }
-static int channel_lbl_low_id(int idx)    { return IDC_CH_BASE + idx * IDC_CH_STRIDE + IDC_CH_LBL_LOW_OFFSET; }
-static int channel_lbl_off_id(int idx)    { return IDC_CH_BASE + idx * IDC_CH_STRIDE + IDC_CH_LBL_OFF_OFFSET; }
+static int channel_mode_id(int idx)   { return IDC_CH_BASE + idx * IDC_CH_STRIDE + IDC_CH_MODE_OFFSET; }
+static int channel_level_id(int idx)  { return IDC_CH_BASE + idx * IDC_CH_STRIDE + IDC_CH_LEVEL_OFFSET; }
+static int channel_status_id(int idx) { return IDC_CH_BASE + idx * IDC_CH_STRIDE + IDC_CH_STATUS_OFFSET; }
 
-/* Maps a control ID back to its channel index, for any control that
- * belongs to a channel card. Returns false for IDs outside that range. */
-static bool channel_index_from_id(int id, int *out_idx) {
-    int rel, idx;
-    if (id < IDC_CH_BASE) {
-        return false;
-    }
-    rel = id - IDC_CH_BASE;
-    idx = rel / IDC_CH_STRIDE;
-    if (idx < 0 || idx >= MAX_CHANNELS) {
-        return false;
-    }
-    *out_idx = idx;
-    return true;
-}
-
-/* Card layout mirrors the sdr_react/sdr_app channel-card pattern: a left
- * column (Mode combo + Set button, ON/OFF power buttons, status line) and
- * a right column (vertical level trackbar + High/Medium/Low/Off labels). */
 static void add_channel_card(HWND hwnd, int index) {
     int col = index % GRID_COLS;
     int row = index / GRID_COLS;
@@ -276,88 +248,53 @@ static void add_channel_card(HWND hwnd, int index) {
     int y = GRID_TOP + row * (CARD_H + CARD_GAP);
     char header[16];
     int i;
-    HWND mode_combo, track;
+    HWND mode_combo, level_combo;
 
     add_panel(hwnd, x, y, CARD_W, CARD_H);
     wsprintfA(header, "CH %d", index + 1);
     add_header(hwnd, header, x + 10, y + 6, 100, 16);
 
-    /* Left column */
     mode_combo = add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP,
-                           x + 8, y + 26, 96, 120, channel_mode_id(index));
+                           x + 8, y + 26, 154, 120, channel_mode_id(index));
     for (i = 0; i < PROTO_MODE_COUNT; i++) {
         const char *name = proto_mode_name((uint8_t)i);
         SendMessageA(mode_combo, CB_ADDSTRING, 0, (LPARAM)(name ? name : "?"));
     }
     SendMessageA(mode_combo, CB_SETCURSEL, PROTO_MODE_WHITE_NOISE, 0);
-    SendMessageA(mode_combo, CB_SETDROPPEDWIDTH, 190, 0);
 
-    add_ctrl(hwnd, "BUTTON", "Set", BS_OWNERDRAW | WS_TABSTOP,
-             x + 108, y + 26, 46, 22, channel_set_id(index));
-
-    add_ctrl(hwnd, "BUTTON", "ON", BS_OWNERDRAW | WS_TABSTOP,
-             x + 8, y + 52, 71, 22, channel_on_id(index));
-    add_ctrl(hwnd, "BUTTON", "OFF", BS_OWNERDRAW | WS_TABSTOP,
-             x + 83, y + 52, 71, 22, channel_off_id(index));
-
-    add_ctrl(hwnd, "STATIC", "STANDBY", SS_LEFT | SS_NOPREFIX,
-             x + 8, y + 78, 146, 16, channel_status_id(index));
-
-    /* Right column: vertical level trackbar (min at bottom, like a
-     * volume slider) + tick labels, matching the web reference's
-     * vertical level-slider + level-labels pair. */
-    /* A plain vertical trackbar puts its minimum at the TOP and maximum
-     * at the BOTTOM - the opposite of the "High on top, Off on bottom"
-     * layout the label stack below uses (matching the web reference's
-     * volume-slider-style orientation). Rather than rely on
-     * TBS_DOWNISLEFT (unreliable across comctl32/Wine versions), the
-     * native position is just kept inverted from the level everywhere
-     * it's read or set: nativePos = 3 - level. */
-    track = CreateWindowExA(0, TRACKBAR_CLASSA, NULL,
-                             WS_CHILD | WS_VISIBLE | TBS_VERT | TBS_NOTICKS,
-                             x + 164, y + 26, 26, 88, hwnd,
-                             (HMENU)(INT_PTR)channel_track_id(index), g_hinst, NULL);
-    if (track) {
-        SendMessageA(track, TBM_SETRANGE, TRUE, MAKELPARAM(0, 3));
-        SendMessageA(track, TBM_SETPOS, TRUE, 3 - LEVEL_OFF);
+    level_combo = add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP,
+                            x + 8, y + 52, 154, 100, channel_level_id(index));
+    for (i = 0; i < LEVEL_OPTIONS_COUNT; i++) {
+        SendMessageA(level_combo, CB_ADDSTRING, 0, (LPARAM)LEVEL_LABELS[i]);
     }
+    SendMessageA(level_combo, CB_SETCURSEL, LEVEL_OFF, 0);
 
-    add_ctrl(hwnd, "STATIC", "High",   SS_LEFT | SS_NOPREFIX, x + 194, y + 26, 44, 16, channel_lbl_high_id(index));
-    add_ctrl(hwnd, "STATIC", "Medium", SS_LEFT | SS_NOPREFIX, x + 194, y + 48, 44, 16, channel_lbl_medium_id(index));
-    add_ctrl(hwnd, "STATIC", "Low",    SS_LEFT | SS_NOPREFIX, x + 194, y + 70, 44, 16, channel_lbl_low_id(index));
-    add_ctrl(hwnd, "STATIC", "Off",    SS_LEFT | SS_NOPREFIX, x + 194, y + 92, 44, 16, channel_lbl_off_id(index));
+    add_ctrl(hwnd, "STATIC", "-", SS_LEFT | SS_NOPREFIX, x + 8, y + 80, 154, 16, channel_status_id(index));
 }
 
 static void ui_refresh_channel(int index) {
     const ChannelState *ch = channels_get(index);
     HWND status_ctl = GetDlgItem(g_hwnd, channel_status_id(index));
-    HWND track = GetDlgItem(g_hwnd, channel_track_id(index));
-    char text[32];
+    HWND mode_combo = GetDlgItem(g_hwnd, channel_mode_id(index));
+    HWND level_combo = GetDlgItem(g_hwnd, channel_level_id(index));
+    char text[64];
 
-    /* Matches sdr_react's ChannelCard status text exactly:
-     * busy -> SENDING..., on -> the level name, off -> STANDBY. */
     if (ch->busy) {
-        lstrcpynA(text, "SENDING...", (int)sizeof(text));
-    } else if (ch->output_on) {
-        lstrcpynA(text, LEVEL_LABELS[ch->level], (int)sizeof(text));
-        CharUpperA(text);
+        wsprintfA(text, "sending...");
+    } else if (ch->unconfirmed) {
+        wsprintfA(text, "%s (unconf.)", ch->last_command);
     } else {
-        lstrcpynA(text, "STANDBY", (int)sizeof(text));
+        lstrcpynA(text, ch->last_command, (int)sizeof(text));
     }
     SetWindowTextA(status_ctl, text);
-    InvalidateRect(status_ctl, NULL, TRUE);
 
-    /* Don't fight the user mid-drag. */
-    if (GetFocus() != track) {
-        SendMessageA(track, TBM_SETPOS, TRUE, 3 - ch->level);
+    /* Don't fight the user mid-selection. */
+    if (GetFocus() != mode_combo) {
+        SendMessageA(mode_combo, CB_SETCURSEL, ch->mode, 0);
     }
-
-    InvalidateRect(GetDlgItem(g_hwnd, channel_on_id(index)), NULL, TRUE);
-    InvalidateRect(GetDlgItem(g_hwnd, channel_off_id(index)), NULL, TRUE);
-    InvalidateRect(GetDlgItem(g_hwnd, channel_lbl_high_id(index)), NULL, TRUE);
-    InvalidateRect(GetDlgItem(g_hwnd, channel_lbl_medium_id(index)), NULL, TRUE);
-    InvalidateRect(GetDlgItem(g_hwnd, channel_lbl_low_id(index)), NULL, TRUE);
-    InvalidateRect(GetDlgItem(g_hwnd, channel_lbl_off_id(index)), NULL, TRUE);
+    if (GetFocus() != level_combo) {
+        SendMessageA(level_combo, CB_SETCURSEL, ch->level, 0);
+    }
 }
 
 static void ui_refresh_all_channels(void) {
@@ -388,7 +325,7 @@ static void build_controls(HWND hwnd) {
     add_ctrl(hwnd, "STATIC", "Parity:", SS_LEFT, 142, 108, 40, 16, 0);
     add_ctrl(hwnd, "COMBOBOX", NULL, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 184, 106, 70, 100, IDC_PARITY_COMBO);
 
-    add_ctrl(hwnd, "STATIC", "", SS_LEFT | SS_NOPREFIX, 355, 6, CLIENT_WIDTH - 355 - 10, 138, IDC_WARNING_LBL);
+    add_ctrl(hwnd, "STATIC", "", SS_LEFT | SS_NOPREFIX, 355, 6, 375, 138, IDC_WARNING_LBL);
     ShowWindow(GetDlgItem(hwnd, IDC_WARNING_LBL), SW_HIDE);
 
     for (idx = 0; idx < MAX_CHANNELS; idx++) {
@@ -422,14 +359,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     switch (msg) {
         case WM_CREATE: {
             ConnectionCallbacks ccb;
-            INITCOMMONCONTROLSEX icc;
 
             g_hwnd = hwnd;
             g_font = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
-
-            icc.dwSize = sizeof(icc);
-            icc.dwICC = ICC_BAR_CLASSES;
-            InitCommonControlsEx(&icc);
 
             g_header_font = CreateFontA(-13, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                                          ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -482,42 +414,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 on_connect_clicked();
                 return 0;
             }
-            {
-                int idx;
-                if (channel_index_from_id(id, &idx)) {
-                    int offset = (id - IDC_CH_BASE) % IDC_CH_STRIDE;
-                    /* Mode selection is local/uncommitted until Set is
-                     * clicked - matches the reference apps exactly
-                     * (selecting a mode does NOT apply it by itself). */
-                    if (offset == IDC_CH_SET_OFFSET && code == BN_CLICKED) {
-                        int sel = (int)SendDlgItemMessageA(hwnd, channel_mode_id(idx), CB_GETCURSEL, 0, 0);
-                        if (sel >= 0) {
-                            channel_set_mode(idx, (uint8_t)sel);
-                        }
-                    } else if (offset == IDC_CH_ON_OFFSET && code == BN_CLICKED) {
-                        channel_turn_output_on(idx);
-                    } else if (offset == IDC_CH_OFF_OFFSET && code == BN_CLICKED) {
-                        channel_turn_output_off(idx);
+            if (id >= IDC_CH_BASE && code == CBN_SELCHANGE) {
+                int rel = id - IDC_CH_BASE;
+                int idx = rel / IDC_CH_STRIDE;
+                int offset = rel % IDC_CH_STRIDE;
+                if (idx >= 0 && idx < MAX_CHANNELS) {
+                    if (offset == IDC_CH_MODE_OFFSET) {
+                        int sel = (int)SendDlgItemMessageA(hwnd, id, CB_GETCURSEL, 0, 0);
+                        channel_set_mode(idx, (uint8_t)sel);
+                    } else if (offset == IDC_CH_LEVEL_OFFSET) {
+                        int sel = (int)SendDlgItemMessageA(hwnd, id, CB_GETCURSEL, 0, 0);
+                        channel_set_level(idx, sel);
                     }
-                    return 0;
                 }
-            }
-            return 0;
-        }
-
-        case WM_VSCROLL: {
-            HWND ctl = (HWND)lParam;
-            int id = ctl ? GetDlgCtrlID(ctl) : -1;
-            int idx;
-            if (ctl && channel_index_from_id(id, &idx) &&
-                (id - IDC_CH_BASE) % IDC_CH_STRIDE == IDC_CH_TRACKBAR_OFFSET) {
-                /* Apply once the drag settles (release, arrow step, page
-                 * step) rather than on every intermediate THUMBTRACK tick -
-                 * same intent as the web reference's slider debounce. */
-                if (LOWORD(wParam) != SB_THUMBTRACK) {
-                    int pos = (int)SendMessageA(ctl, TBM_GETPOS, 0, 0);
-                    channel_set_level(idx, 3 - pos);
-                }
+                return 0;
             }
             return 0;
         }
@@ -525,8 +435,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         case WM_CTLCOLORSTATIC: {
             HWND ctl = (HWND)lParam;
             HDC hdc = (HDC)wParam;
-            int ctl_id = GetDlgCtrlID(ctl);
-            int idx;
             if (ctl == GetDlgItem(hwnd, IDC_CONN_STATUS_LBL)) {
                 SetTextColor(hdc, conn_is_connected(&g_conn) ? COLOR_APP_CONNECTED : COLOR_APP_DISCONNECTED);
                 SetBkMode(hdc, TRANSPARENT);
@@ -536,27 +444,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 SetTextColor(hdc, RGB(146, 64, 14));
                 SetBkColor(hdc, RGB(254, 243, 199));
                 return (LRESULT)g_brush_warn;
-            }
-            if (channel_index_from_id(ctl_id, &idx)) {
-                int offset = (ctl_id - IDC_CH_BASE) % IDC_CH_STRIDE;
-                const ChannelState *ch = channels_get(idx);
-                if (offset == IDC_CH_STATUS_OFFSET) {
-                    COLORREF col = ch->busy ? COLOR_APP_ACCENT
-                                   : (ch->output_on ? COLOR_APP_CONNECTED : COLOR_APP_MUTED);
-                    SetTextColor(hdc, col);
-                    SetBkMode(hdc, TRANSPARENT);
-                    return (LRESULT)g_brush_panel;
-                }
-                if (offset == IDC_CH_LBL_HIGH_OFFSET || offset == IDC_CH_LBL_MEDIUM_OFFSET ||
-                    offset == IDC_CH_LBL_LOW_OFFSET || offset == IDC_CH_LBL_OFF_OFFSET) {
-                    int lvl_for_label = (offset == IDC_CH_LBL_HIGH_OFFSET)   ? LEVEL_HIGH
-                                       : (offset == IDC_CH_LBL_MEDIUM_OFFSET) ? LEVEL_MEDIUM
-                                       : (offset == IDC_CH_LBL_LOW_OFFSET)    ? LEVEL_LOW
-                                                                               : LEVEL_OFF;
-                    SetTextColor(hdc, (ch->level == lvl_for_label) ? COLOR_APP_HEADER : COLOR_APP_MUTED);
-                    SetBkMode(hdc, TRANSPARENT);
-                    return (LRESULT)g_brush_panel;
-                }
             }
             if ((HFONT)SendMessageA(ctl, WM_GETFONT, 0, 0) == g_header_font) {
                 SetTextColor(hdc, COLOR_APP_HEADER);
@@ -589,38 +476,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 char text[64];
                 bool disabled = (dis->itemState & ODS_DISABLED) != 0;
                 RECT rc = dis->rcItem;
-                int idx;
-                int offset = -1;
-
-                if (channel_index_from_id((int)dis->CtlID, &idx)) {
-                    offset = ((int)dis->CtlID - IDC_CH_BASE) % IDC_CH_STRIDE;
-                }
-
-                /* ON/OFF are two real, separate buttons (not one toggle) -
-                 * whichever is active gets a solid fill (green ON / red
-                 * OFF), matching the reference apps' PowerButton exactly. */
-                if (offset == IDC_CH_ON_OFFSET || offset == IDC_CH_OFF_OFFSET) {
-                    const ChannelState *ch = channels_get(idx);
-                    bool active = (offset == IDC_CH_ON_OFFSET) ? ch->output_on : !ch->output_on;
-                    HBRUSH fill = active
-                        ? (offset == IDC_CH_ON_OFFSET ? g_brush_connected : g_brush_disconnected)
-                        : g_brush_panel;
-                    HPEN pen = CreatePen(PS_SOLID, 1, COLOR_APP_PANEL_BORDER);
-                    HPEN old_pen = (HPEN)SelectObject(dis->hDC, pen);
-                    HBRUSH old_brush = (HBRUSH)SelectObject(dis->hDC, fill);
-
-                    Rectangle(dis->hDC, rc.left, rc.top, rc.right, rc.bottom);
-                    SelectObject(dis->hDC, old_brush);
-                    SelectObject(dis->hDC, old_pen);
-                    DeleteObject(pen);
-
-                    SetTextColor(dis->hDC, active ? RGB(255, 255, 255) : COLOR_APP_MUTED);
-                    SetBkMode(dis->hDC, TRANSPARENT);
-                    GetWindowTextA(dis->hwndItem, text, sizeof(text));
-                    DrawTextA(dis->hDC, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-                    return TRUE;
-                }
-
                 FillRect(dis->hDC, &rc, disabled ? g_brush_accent_dis : g_brush_accent);
                 SetTextColor(dis->hDC, RGB(255, 255, 255));
                 SetBkMode(dis->hDC, TRANSPARENT);
@@ -648,8 +503,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (g_brush_accent_dis) DeleteObject(g_brush_accent_dis);
             if (g_brush_dot) DeleteObject(g_brush_dot);
             if (g_brush_warn) DeleteObject(g_brush_warn);
-            if (g_brush_connected) DeleteObject(g_brush_connected);
-            if (g_brush_disconnected) DeleteObject(g_brush_disconnected);
             if (g_header_font && g_header_font != g_font) DeleteObject(g_header_font);
             PostQuitMessage(0);
             return 0;
@@ -675,8 +528,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     g_brush_accent_dis = CreateSolidBrush(COLOR_APP_ACCENT_DIS);
     g_brush_dot = CreateSolidBrush(COLOR_APP_DOT);
     g_brush_warn = CreateSolidBrush(RGB(254, 243, 199));
-    g_brush_connected = CreateSolidBrush(COLOR_APP_CONNECTED);
-    g_brush_disconnected = CreateSolidBrush(COLOR_APP_DISCONNECTED);
 
     memset(&wc, 0, sizeof(wc));
     wc.cbSize = sizeof(wc);
