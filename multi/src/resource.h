@@ -14,11 +14,22 @@
 
 #define ID_POLL_TIMER        1
 
-/* Each of the 16 channel cards gets 3 controls (Mode combo, Level combo,
- * status label) at IDC_CH_BASE + channel_index*IDC_CH_STRIDE + offset,
- * rather than 48 separate #defines. */
-#define IDC_CH_BASE          2000
-#define IDC_CH_STRIDE        10
-#define IDC_CH_MODE_OFFSET   0
-#define IDC_CH_LEVEL_OFFSET  1
-#define IDC_CH_STATUS_OFFSET 2
+/* Each of the 16 channel cards gets its controls at
+ * IDC_CH_BASE + channel_index*IDC_CH_STRIDE + offset, rather than a
+ * separate #define per control per channel. Layout matches the
+ * sdr_react/sdr_app channel-card pattern: Mode combo + explicit Set
+ * button (mode is not applied until Set is clicked), separate ON/OFF
+ * power buttons, a status line, and a vertical level trackbar with
+ * High/Medium/Low/Off tick labels. */
+#define IDC_CH_BASE               2000
+#define IDC_CH_STRIDE             10
+#define IDC_CH_MODE_OFFSET        0
+#define IDC_CH_SET_OFFSET         1
+#define IDC_CH_ON_OFFSET          2
+#define IDC_CH_OFF_OFFSET         3
+#define IDC_CH_STATUS_OFFSET      4
+#define IDC_CH_TRACKBAR_OFFSET    5
+#define IDC_CH_LBL_HIGH_OFFSET    6
+#define IDC_CH_LBL_MEDIUM_OFFSET  7
+#define IDC_CH_LBL_LOW_OFFSET     8
+#define IDC_CH_LBL_OFF_OFFSET     9
